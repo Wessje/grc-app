@@ -1,0 +1,210 @@
+/*
+ * Styling for the whole GRC tool: layout, tables, rating colours and flags.
+ */
+
+/* --- Page basics --- */
+
+body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    font-size: 15px;
+    line-height: 1.5;
+    color: #1f2933;
+    background: #f5f7fa;
+}
+
+main {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 24px;
+}
+
+a {
+    color: #1d4ed8;
+}
+
+h1 {
+    margin-top: 0;
+    font-size: 26px;
+}
+
+h2 {
+    margin: 28px 0 8px;
+    font-size: 18px;
+    border-bottom: 1px solid #d9e2ec;
+    padding-bottom: 4px;
+}
+
+.hint {
+    color: #52606d;
+}
+
+/* --- Header and navigation --- */
+
+.site-header {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    padding: 12px 24px;
+    background: #102a43;
+    color: #fff;
+}
+
+.site-header a {
+    color: #fff;
+    text-decoration: none;
+}
+
+.site-name {
+    font-weight: bold;
+    font-size: 18px;
+}
+
+.site-header nav {
+    display: flex;
+    gap: 16px;
+}
+
+.user-menu {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.user-menu form {
+    margin: 0;
+}
+
+/* A button that looks like a link (used for "Log out"). */
+.link-button {
+    background: none;
+    border: none;
+    padding: 0;
+    color: #fff;
+    font: inherit;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+/* --- Risk register table --- */
+
+table.register {
+    width: 100%;
+    border-collapse: collapse;
+    background: #fff;
+}
+
+table.register th,
+table.register td {
+    padding: 8px 10px;
+    border-bottom: 1px solid #d9e2ec;
+    text-align: left;
+    vertical-align: top;
+}
+
+table.register th {
+    background: #e4e7eb;
+}
+
+table.register td.number {
+    text-align: right;
+}
+
+/* Keep short values such as "RISK-0001" and "In treatment" on one line. */
+table.register .nowrap {
+    white-space: nowrap;
+}
+
+/* --- Rating labels (colour plus text, so meaning never relies on colour alone) --- */
+
+.rating {
+    display: inline-block;
+    min-width: 64px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-weight: bold;
+    text-align: center;
+}
+
+.rating-low      { background: #c6f6d5; color: #22543d; }
+.rating-medium   { background: #fefcbf; color: #744210; }
+.rating-high     { background: #fbd38d; color: #7b341e; }
+.rating-critical { background: #c53030; color: #fff; }
+
+/* --- Flags and notices --- */
+
+.flag {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 0 6px;
+    border: 1px solid #c53030;
+    border-radius: 4px;
+    color: #c53030;
+    font-size: 12px;
+    font-weight: bold;
+}
+
+.notice {
+    padding: 10px 14px;
+    border-left: 4px solid #52606d;
+    background: #fff;
+}
+
+.flag-notice {
+    border-left-color: #c53030;
+}
+
+.error {
+    color: #c53030;
+}
+
+/* --- Detail page --- */
+
+.details dl {
+    display: grid;
+    grid-template-columns: 220px 1fr;
+    gap: 6px 16px;
+    margin: 0;
+}
+
+.details dt {
+    font-weight: bold;
+    color: #52606d;
+}
+
+.details dd {
+    margin: 0;
+}
+
+/* Keep line breaks that were typed into long text fields. */
+.multiline {
+    white-space: pre-line;
+}
+
+/* --- Login page --- */
+
+.login {
+    max-width: 320px;
+    margin: 40px auto;
+    padding: 24px;
+    background: #fff;
+    border: 1px solid #d9e2ec;
+}
+
+.login label {
+    display: block;
+    margin-top: 12px;
+    font-weight: bold;
+}
+
+.login input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 6px;
+}
+
+.login button {
+    margin-top: 16px;
+    padding: 6px 16px;
+}

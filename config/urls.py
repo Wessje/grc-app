@@ -1,14 +1,20 @@
 """
 Maps web addresses (URLs) to pages for the whole project.
 
-For now only the admin screen exists, at /admin/. While no other pages are
-defined, Django shows its welcome page at the home address (in DEBUG mode).
-Risk register pages are added from Step 4 of docs/plan.md.
+- /                 the risk register (see risks/urls.py)
+- /accounts/login/  login page; /accounts/logout/ logs out
+- /admin/           Django's admin screen
 """
 
 from django.contrib import admin
-from django.urls import path
+from django.contrib.auth import views as auth_views
+from django.urls import include, path
 
 urlpatterns = [
+    path("", include("risks.urls")),
+    # Only login and logout are enabled; Django's password-reset pages are
+    # left out because they need email and would be extra public pages.
+    path("accounts/login/", auth_views.LoginView.as_view(), name="login"),
+    path("accounts/logout/", auth_views.LogoutView.as_view(), name="logout"),
     path("admin/", admin.site.urls),
 ]

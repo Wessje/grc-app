@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% comment %}
+The risk register: a table of active risks (not archived, not Closed).
+Each rating is colour-coded and also written out, so it doesn't rely on colour alone.
+{% endcomment %}
+
+{% block title %}Risk register{% endblock %}
+
+{% block content %}
+<h1>Risk register</h1>
+<p class="hint">Showing Open, In treatment and Monitoring risks. Closed and archived risks are not shown.</p>
+
+{% if risks %}
+<table class="register">
+    <thead>
+        <tr>
+            <th>Risk ID</th>
+            <th>Title</th>
+            <th>Owner</th>
+            <th>Category</th>
+            <th>Inherent score</th>
+            <th>Inherent rating</th>
+            <th>Status</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for risk in risks %}
+        <tr>
+            <td class="nowrap"><a href="{% url 'risks:risk_detail' risk.pk %}">{{ risk.risk_id }}</a></td>
+            <td>
+                <a href="{% url 'risks:risk_detail' risk.pk %}">{{ risk.title }}</a>
+                {% if risk.is_acceptance_expired %}<span class="flag">Acceptance expired</span>{% endif %}
+            </td>
+            <td>{{ risk.owner }}</td>
+            <td>{{ risk.category }}</td>
+            <td class="number">{{ risk.inherent_score }}</td>
+            <td><span class="rating rating-{{ risk.inherent_rating|lower }}">{{ risk.inherent_rating }}</span></td>
+            <td class="nowrap">{{ risk.get_status_display }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p>No active risks. Add risks in the admin screen, or run <code>python manage.py load_sample_risks</code>.</p>
+{% endif %}
+{% endblock %}

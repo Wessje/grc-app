@@ -1,6 +1,6 @@
 """
 Automated checks for the risk register: scoring, Risk IDs, validation rules,
-the admin screen and the sample data command.
+the admin screen, the sample data command, login and the list/detail pages.
 
 Project-wide setup checks live in config/tests.py.
 Run with: python manage.py test
@@ -341,3 +341,127 @@ class SampleDataTests(TestCase):
         for risk in Risk.objects.all():
             with self.subTest(risk.title):
                 self.assertEqual(validation_errors(risk), {})
+
+
+class AcceptanceExpiryTests(TestCase):
+    """An acceptance counts as expired from the day after its expiry date."""
+
+    def make_accepted_risk(self, expiry_date):
+        """Build an accepted risk (unsaved) with the given expiry date."""
+        return make_risk(
+            RiskCategory(name="Cyber"),
+            response_type=Risk.ResponseType.ACCEPT,
+            acceptance_expiry_date=expiry_date,
+        )
+
+    def test_expiry_flag(self):
+        today = timezone.localdate()
+        one_day = datetime.timedelta(days=1)
+        self.assertTrue(self.make_accepted_risk(today - one_day).is_acceptance_expired)
+        self.assertFalse(self.make_accepted_risk(today).is_acceptance_expired)
+        self.assertFalse(self.make_accepted_risk(today + one_day).is_acceptance_expired)
+
+    def test_non_accepted_risk_is_never_expired(self):
+        risk = make_risk(RiskCategory(name="Cyber"), response_type=Risk.ResponseType.MITIGATE)
+        self.assertFalse(risk.is_acceptance_expired)
+
+
+class LoginRequiredTests(TestCase):
+    """Logged-out visitors are sent to the login page."""
+
+    def test_pages_redirect_to_login_when_logged_out(self):
+        risk = make_risk(RiskCategory.objects.create(name="Cyber"))
+        risk.save()
+        for url in [reverse("risks:risk_list"), reverse("risks:risk_detail", args=[risk.pk])]:
+            with self.subTest(url):
+                response = self.client.get(url)
+                self.assertRedirects(response, f"{reverse('login')}?next={url}")
+
+    def test_login_page_is_open_and_login_works(self):
+        get_user_model().objects.create_user(username="w", password="test-password-123")
+        self.assertEqual(self.client.get(reverse("login")).status_code, 200)
+        response = self.client.post(
+            reverse("login"), {"username": "w", "password": "test-password-123"}
+        )
+        self.assertRedirects(response, reverse("risks:risk_list"))
+
+    def test_wrong_password_is_refused(self):
+        get_user_model().objects.create_user(username="w", password="test-password-123")
+        response = self.client.post(reverse("login"), {"username": "w", "password": "wrong"})
+        self.assertContains(response, "didn't match")
+
+    def test_admin_login_page_still_works(self):
+        self.assertEqual(self.client.get(reverse("admin:login")).status_code, 200)
+
+    def test_logout_logs_the_user_out(self):
+        user = get_user_model().objects.create_user(username="w", password="test-password-123")
+        self.client.force_login(user)
+        response = self.client.post(reverse("logout"))
+        self.assertRedirects(response, reverse("login"))
+        self.assertEqual(self.client.get(reverse("risks:risk_list")).status_code, 302)
+
+
+class RiskPagesTests(TestCase):
+    """The list and detail pages show the right risks and flags."""
+
+    def setUp(self):
+        user = get_user_model().objects.create_user(username="w", password="test-password-123")
+        self.client.force_login(user)
+        self.category = RiskCategory.objects.create(name="Cyber")
+
+    def save_risk(self, **overrides):
+        """Create and save a risk with the given field changes. Output: the risk."""
+        risk = make_risk(self.category, **overrides)
+        risk.save()
+        return risk
+
+    def test_list_shows_active_risks_only(self):
+        self.save_risk(title="Open risk")
+        self.save_risk(title="Monitored risk", status=Risk.Status.MONITORING,
+                       response_type=Risk.ResponseType.MITIGATE, response_description="MFA")
+        self.save_risk(title="Closed risk", status=Risk.Status.CLOSED)
+        self.save_risk(title="Archived risk", archived_at=timezone.now())
+
+        response = self.client.get(reverse("risks:risk_list"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Open risk")
+        self.assertContains(response, "Monitored risk")
+        self.assertNotContains(response, "Closed risk")
+        self.assertNotContains(response, "Archived risk")
+
+    def test_list_shows_columns_and_rating(self):
+        risk = self.save_risk(inherent_likelihood=5, inherent_impact=5)
+        response = self.client.get(reverse("risks:risk_list"))
+        for text in [risk.risk_id, risk.title, risk.owner, "Cyber", "25", "Critical", "Open"]:
+            self.assertContains(response, text)
+        self.assertContains(response, 'class="rating rating-critical"')
+
+    def test_expired_acceptance_is_flagged_on_both_pages(self):
+        today = timezone.localdate()
+        expired = self.save_risk(
+            response_type=Risk.ResponseType.ACCEPT,
+            response_description="Within appetite.",
+            accepted_by="CISO",
+            acceptance_date=today - datetime.timedelta(days=400),
+            acceptance_expiry_date=today - datetime.timedelta(days=1),
+        )
+        self.assertContains(self.client.get(reverse("risks:risk_list")), "Acceptance expired")
+        detail = self.client.get(reverse("risks:risk_detail", args=[expired.pk]))
+        self.assertContains(detail, "Acceptance expired")
+
+    def test_valid_risk_is_not_flagged(self):
+        risk = self.save_risk()
+        self.assertNotContains(self.client.get(reverse("risks:risk_list")), "Acceptance expired")
+        detail = self.client.get(reverse("risks:risk_detail", args=[risk.pk]))
+        self.assertNotContains(detail, "Acceptance expired")
+
+    def test_detail_page_shows_fields_with_labels(self):
+        risk = self.save_risk(notes="Some notes")
+        response = self.client.get(reverse("risks:risk_detail", args=[risk.pk]))
+        for text in [risk.risk_id, risk.title, risk.description, risk.risk_source,
+                     "3 – Possible", "4 – Major", "12", "High", "Some notes"]:
+            self.assertContains(response, text)
+
+    def test_detail_page_of_unknown_risk_is_not_found(self):
+        response = self.client.get(reverse("risks:risk_detail", args=[9999]))
+        self.assertEqual(response.status_code, 404)

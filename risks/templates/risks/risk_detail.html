@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% comment %}
+Detail page for one risk: every field, grouped like the admin screen.
+Flags expired acceptances and archived risks at the top.
+{% endcomment %}
+
+{% block title %}{{ risk.risk_id }}{% endblock %}
+
+{% block content %}
+<p><a href="{% url 'risks:risk_list' %}">← Back to risk register</a></p>
+
+<h1>{{ risk.risk_id }}: {{ risk.title }}</h1>
+
+{% if risk.archived_at %}
+    <p class="notice">Archived on {{ risk.archived_at }}. This risk is read-only.</p>
+{% endif %}
+{% if risk.is_acceptance_expired %}
+    <p class="notice flag-notice">Acceptance expired on {{ risk.acceptance_expiry_date }}. Re-review this risk acceptance.</p>
+{% endif %}
+
+<section class="details">
+    <h2>Risk</h2>
+    <dl>
+        <dt>Description</dt><dd class="multiline">{{ risk.description }}</dd>
+        <dt>Category</dt><dd>{{ risk.category }}</dd>
+        <dt>Owner</dt><dd>{{ risk.owner }}</dd>
+        <dt>Risk source</dt><dd>{{ risk.risk_source }}</dd>
+        <dt>Date identified</dt><dd>{{ risk.date_identified }}</dd>
+    </dl>
+
+    <h2>Inherent risk</h2>
+    <dl>
+        <dt>Likelihood</dt><dd>{{ risk.get_inherent_likelihood_display }}</dd>
+        <dt>Impact</dt><dd>{{ risk.get_inherent_impact_display }}</dd>
+        <dt>Score</dt><dd>{{ risk.inherent_score }}</dd>
+        <dt>Rating</dt><dd><span class="rating rating-{{ risk.inherent_rating|lower }}">{{ risk.inherent_rating }}</span></dd>
+    </dl>
+
+    <h2>Treatment</h2>
+    <dl>
+        <dt>Status</dt><dd>{{ risk.get_status_display }}</dd>
+        <dt>Response type</dt><dd>{{ risk.get_response_type_display|default:"—" }}</dd>
+        <dt>Response description</dt><dd class="multiline">{{ risk.response_description|default:"—" }}</dd>
+    </dl>
+
+    {% if risk.response_type == "accept" %}
+    <h2>Risk acceptance</h2>
+    <dl>
+        <dt>Accepted by</dt><dd>{{ risk.accepted_by }}</dd>
+        <dt>Acceptance date</dt><dd>{{ risk.acceptance_date }}</dd>
+        <dt>Acceptance expiry date</dt>
+        <dd>
+            {{ risk.acceptance_expiry_date }}
+            {% if risk.is_acceptance_expired %}<span class="flag">Acceptance expired</span>{% endif %}
+        </dd>
+    </dl>
+    {% endif %}
+
+    <h2>Other</h2>
+    <dl>
+        <dt>Notes</dt><dd class="multiline">{{ risk.notes|default:"—" }}</dd>
+        <dt>Created</dt><dd>{{ risk.created_at }}</dd>
+        <dt>Last updated</dt><dd>{{ risk.updated_at }}</dd>
+    </dl>
+</section>
+{% endblock %}

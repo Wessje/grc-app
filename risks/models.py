@@ -161,6 +161,20 @@ class Risk(models.Model):
             return ""
         return rating_for_score(self.inherent_score)
 
+    @property
+    def is_acceptance_expired(self):
+        """
+        True if the risk is accepted and the acceptance expiry date has passed.
+
+        The acceptance is still valid on the expiry date itself; it counts as
+        expired from the next day. Used to prompt a re-review.
+        """
+        return (
+            self.response_type == self.ResponseType.ACCEPT
+            and self.acceptance_expiry_date is not None
+            and self.acceptance_expiry_date < timezone.localdate()
+        )
+
     def clean(self):
         """
         Check the rules that involve more than one field.

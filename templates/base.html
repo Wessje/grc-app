@@ -1,0 +1,36 @@
+{% comment %}
+Shared page layout used by every page: header, navigation and main content area.
+Pages fill in the "title" and "content" blocks.
+{% endcomment %}
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}GRC tool{% endblock %} – GRC tool</title>
+    <link rel="stylesheet" href="{% static 'css/style.css' %}">
+</head>
+<body>
+    <header class="site-header">
+        <a class="site-name" href="{% url 'risks:risk_list' %}">GRC tool</a>
+        {% if user.is_authenticated %}
+            <nav>
+                <a href="{% url 'risks:risk_list' %}">Risk register</a>
+                {% if user.is_staff %}<a href="{% url 'admin:index' %}">Admin</a>{% endif %}
+            </nav>
+            <div class="user-menu">
+                <span>{{ user.get_username }}</span>
+                {# Logging out must be a form (POST), so another site can't log you out with a link. #}
+                <form method="post" action="{% url 'logout' %}">
+                    {% csrf_token %}
+                    <button type="submit" class="link-button">Log out</button>
+                </form>
+            </div>
+        {% endif %}
+    </header>
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+</body>
+</html>
