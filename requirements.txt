@@ -1,0 +1,6 @@
+# Python libraries this project needs. Install with: pip install -r requirements.txt
+# Versions are pinned exactly so every install behaves the same.
+Django==6.1.1
+# Installed automatically with Django:
+asgiref==3.12.1
+sqlparse==0.6.0

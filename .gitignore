@@ -1,7 +1,9 @@
 .env
 .env.*
+!.env.example
 __pycache__/
 node_modules/
 .venv/
 *.db
+backups/
 .DS_Store
