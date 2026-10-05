@@ -1,15 +1,17 @@
 """
-Automated checks for the risk register: scoring, Risk IDs, validation rules
-and the admin screen.
+Automated checks for the risk register: scoring, Risk IDs, validation rules,
+the admin screen and the sample data command.
 
 Project-wide setup checks live in config/tests.py.
 Run with: python manage.py test
 """
 
 import datetime
+from io import StringIO
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
+from django.core.management import call_command
 from django.db import IntegrityError, transaction
 from django.db.models import ProtectedError
 from django.test import TestCase
@@ -280,3 +282,62 @@ class AdminTests(TestCase):
         response = self.client.post(reverse("admin:risks_risk_delete", args=[risk.pk]))
         self.assertEqual(response.status_code, 403)
         self.assertTrue(Risk.objects.filter(pk=risk.pk).exists())
+
+
+class SampleDataTests(TestCase):
+    """The load_sample_risks command loads valid, varied data exactly once."""
+
+    def load_sample_risks(self):
+        """Run the command, hiding its output. Output: the printed message."""
+        output = StringIO()
+        call_command("load_sample_risks", stdout=output)
+        return output.getvalue()
+
+    def test_loads_starting_categories(self):
+        self.load_sample_risks()
+        self.assertEqual(
+            set(RiskCategory.objects.values_list("name", flat=True)),
+            {"Cyber", "Operational", "Compliance", "Third party", "Strategic", "Financial"},
+        )
+
+    def test_running_twice_does_not_create_duplicates(self):
+        self.load_sample_risks()
+        risk_count = Risk.objects.count()
+        category_count = RiskCategory.objects.count()
+        self.assertGreaterEqual(risk_count, 10)
+
+        message = self.load_sample_risks()
+        self.assertEqual(Risk.objects.count(), risk_count)
+        self.assertEqual(RiskCategory.objects.count(), category_count)
+        self.assertIn("Risks created: 0", message)
+
+    def test_existing_edits_are_kept(self):
+        self.load_sample_risks()
+        risk = Risk.objects.first()
+        risk.owner = "Changed owner"
+        risk.save()
+        self.load_sample_risks()
+        risk.refresh_from_db()
+        self.assertEqual(risk.owner, "Changed owner")
+
+    def test_covers_every_rating_and_status(self):
+        self.load_sample_risks()
+        risks = Risk.objects.all()
+        self.assertEqual(
+            {risk.inherent_rating for risk in risks}, {"Low", "Medium", "High", "Critical"}
+        )
+        self.assertEqual({risk.status for risk in risks}, set(Risk.Status.values))
+
+    def test_includes_an_expired_acceptance(self):
+        self.load_sample_risks()
+        expired = Risk.objects.filter(
+            response_type=Risk.ResponseType.ACCEPT,
+            acceptance_expiry_date__lt=timezone.localdate(),
+        )
+        self.assertTrue(expired.exists())
+
+    def test_all_sample_risks_pass_validation(self):
+        self.load_sample_risks()
+        for risk in Risk.objects.all():
+            with self.subTest(risk.title):
+                self.assertEqual(validation_errors(risk), {})
