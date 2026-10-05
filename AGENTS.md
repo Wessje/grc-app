@@ -42,6 +42,7 @@ python manage.py runserver            # start the app at http://127.0.0.1:8000
 python manage.py makemigrations       # after changing a model: generate a migration
 python manage.py migrate              # apply migrations to the database
 python manage.py load_sample_risks    # load made-up sample risks
+python manage.py backup_db            # write a dated backup copy to backups/
 python manage.py test                 # run the automated tests
 ```
 

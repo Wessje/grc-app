@@ -1,20 +1,26 @@
 """
 Automated checks for the risk register: scoring, Risk IDs, validation rules,
-the admin screen, the sample data command, login, the pages and change history.
+the admin screen, the sample data and backup commands, login, the pages,
+change history, archiving and the register's filters.
 
 Project-wide setup checks live in config/tests.py.
 Run with: python manage.py test
 """
 
 import datetime
+import sqlite3
+import stat
+import tempfile
 from io import StringIO
+from pathlib import Path
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.core.management import call_command
 from django.db import IntegrityError, transaction
 from django.db.models import ProtectedError
-from django.test import TestCase
+from django.test import TestCase, TransactionTestCase
 from django.urls import reverse
 from django.utils import timezone
 
@@ -26,6 +32,7 @@ from risks.models import (
     rating_for_score,
     score_range_for_rating,
 )
+from risks.management.commands.backup_db import backup_file_path
 
 
 def make_risk(category, **overrides):
@@ -800,3 +807,56 @@ class RegisterFilterTests(TestCase):
         response = self.client.get(reverse("risks:risk_list"), {"status": "closed"})
         self.assertContains(response, "Old printer")
         self.assertContains(response, "Clear filters")
+
+
+class BackupTests(TransactionTestCase):
+    """
+    The backup_db command writes a sound, dated, private copy of the database.
+
+    TransactionTestCase saves test data for real (instead of inside an
+    unfinished transaction), so the backup can read it, as it would in use.
+    """
+
+    def setUp(self):
+        self.folder = Path(tempfile.mkdtemp()) / "backups"
+        make_risk(RiskCategory.objects.create(name="Cyber"), title="Backed-up risk").save()
+
+    def run_backup(self):
+        """Run the command into the temporary folder. Output: the printed message."""
+        output = StringIO()
+        call_command("backup_db", folder=self.folder, stdout=output)
+        return output.getvalue()
+
+    def test_backup_file_is_dated_and_contains_the_data(self):
+        message = self.run_backup()
+        backups = list(self.folder.glob("*.db"))
+        self.assertEqual(len(backups), 1)
+        self.assertRegex(backups[0].name, r"^grc-\d{4}-\d{2}-\d{2}-\d{4}\.db$")
+        self.assertIn("Backup written", message)
+
+        copy = sqlite3.connect(backups[0])
+        titles = [row[0] for row in copy.execute("SELECT title FROM risks_risk")]
+        copy.close()
+        self.assertEqual(titles, ["Backed-up risk"])
+
+    def test_backup_never_overwrites_an_earlier_one(self):
+        self.run_backup()
+        self.run_backup()
+        self.assertEqual(len(list(self.folder.glob("*.db"))), 2)
+
+    def test_backup_file_name_counter(self):
+        now = timezone.localtime()
+        self.folder.mkdir(parents=True)
+        first = backup_file_path(self.folder, now)
+        first.touch()
+        self.assertEqual(backup_file_path(self.folder, now).name, first.stem + "-2.db")
+
+    def test_backup_is_readable_by_owner_only(self):
+        self.run_backup()
+        backup = next(self.folder.glob("*.db"))
+        self.assertEqual(stat.S_IMODE(backup.stat().st_mode), 0o600)
+        self.assertEqual(stat.S_IMODE(self.folder.stat().st_mode), 0o700)
+
+    def test_backups_folder_is_excluded_from_git(self):
+        gitignore = (settings.BASE_DIR / ".gitignore").read_text().splitlines()
+        self.assertIn("backups/", gitignore)
