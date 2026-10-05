@@ -1,0 +1,7 @@
+.env
+.env.*
+__pycache__/
+node_modules/
+.venv/
+*.db
+.DS_Store
