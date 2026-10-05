@@ -66,7 +66,7 @@ class ProjectSettingsTests(TestCase):
         # Must end in .db so .gitignore keeps it out of git. The settings file
         # is read afresh because tests run against a temporary in-memory
         # database, which replaces the name in the active settings.
-        settings_file = runpy.run_module("config.settings")
+        settings_file = runpy.run_path(str(settings.BASE_DIR / "config" / "settings.py"))
         database_name = Path(settings_file["DATABASES"]["default"]["NAME"]).name
         self.assertEqual(database_name, "grc.db")
 

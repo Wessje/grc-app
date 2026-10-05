@@ -1,5 +1,244 @@
 """
-Database tables for the risk register (Risk, RiskCategory, RiskChange).
+Database tables for the risk register: RiskCategory and Risk.
 
-Empty for now; the tables are added in Step 2 of docs/plan.md.
+This file is the central definition of a risk. The validation rules live here
+(in `Risk.clean`), so the admin screen and our own forms enforce exactly the
+same rules. The scoring scales and rating bands are also defined here, in one
+place, so they are easy to adjust later.
 """
+
+from django.core.exceptions import ValidationError
+from django.db import models, transaction
+from django.utils import timezone
+
+# --- Scoring scales --------------------------------------------------------
+
+# Each scale value is shown with its label, e.g. "3 – Possible", so everyone
+# scores against the same definitions.
+LIKELIHOOD_CHOICES = [
+    (1, "1 – Rare"),
+    (2, "2 – Unlikely"),
+    (3, "3 – Possible"),
+    (4, "4 – Likely"),
+    (5, "5 – Almost certain"),
+]
+
+IMPACT_CHOICES = [
+    (1, "1 – Insignificant"),
+    (2, "2 – Minor"),
+    (3, "3 – Moderate"),
+    (4, "4 – Major"),
+    (5, "5 – Severe"),
+]
+
+# Rating bands: each entry is (highest score in the band, rating label).
+# Scores run from 1 to 25 (likelihood × impact). Adjust the bands here only.
+RATING_BANDS = [
+    (4, "Low"),
+    (9, "Medium"),
+    (16, "High"),
+    (25, "Critical"),
+]
+
+
+def calculate_inherent_score(likelihood, impact):
+    """
+    Calculate the inherent risk score.
+
+    Inputs: likelihood and impact, each a whole number from 1 to 5.
+    Output: likelihood × impact, a whole number from 1 to 25.
+    """
+    return likelihood * impact
+
+
+def rating_for_score(score):
+    """
+    Turn a risk score into a rating label.
+
+    Input: a score from 1 to 25.
+    Output: "Low", "Medium", "High" or "Critical", using RATING_BANDS.
+    """
+    for highest_score_in_band, rating in RATING_BANDS:
+        if score <= highest_score_in_band:
+            return rating
+    return RATING_BANDS[-1][1]
+
+
+# --- Tables ----------------------------------------------------------------
+
+
+class RiskCategory(models.Model):
+    """A category from the pick-list, e.g. Cyber or Operational."""
+
+    name = models.CharField(max_length=100, unique=True)
+
+    class Meta:
+        ordering = ["name"]
+        verbose_name_plural = "risk categories"
+
+    def __str__(self):
+        return self.name
+
+
+class Risk(models.Model):
+    """One entry in the risk register."""
+
+    class Status(models.TextChoices):
+        OPEN = "open", "Open"
+        IN_TREATMENT = "in_treatment", "In treatment"
+        MONITORING = "monitoring", "Monitoring"
+        CLOSED = "closed", "Closed"
+
+    class ResponseType(models.TextChoices):
+        MITIGATE = "mitigate", "Mitigate"
+        ACCEPT = "accept", "Accept"
+        TRANSFER = "transfer", "Transfer"
+        AVOID = "avoid", "Avoid"
+
+    # Generated after the first save (see `save`); empty until then.
+    risk_id = models.CharField(
+        "risk ID", max_length=20, unique=True, null=True, blank=True, editable=False
+    )
+    title = models.CharField(max_length=200)
+    description = models.TextField()
+    # PROTECT: a category that is still used by a risk cannot be deleted.
+    category = models.ForeignKey(RiskCategory, on_delete=models.PROTECT)
+    owner = models.CharField(max_length=200, help_text="Person or role.")
+    risk_source = models.CharField(
+        max_length=200,
+        help_text="Where the risk resides, e.g. a process or a solution/system.",
+    )
+    date_identified = models.DateField(default=timezone.localdate)
+
+    inherent_likelihood = models.PositiveSmallIntegerField(choices=LIKELIHOOD_CHOICES)
+    inherent_impact = models.PositiveSmallIntegerField(choices=IMPACT_CHOICES)
+    # Calculated in `save`, never entered by hand.
+    inherent_score = models.PositiveSmallIntegerField(editable=False, blank=True)
+
+    status = models.CharField(max_length=20, choices=Status, default=Status.OPEN)
+
+    response_type = models.CharField(
+        "risk response type", max_length=20, choices=ResponseType, blank=True
+    )
+    response_description = models.TextField("risk response description", blank=True)
+
+    # Only used when the response type is Accept.
+    accepted_by = models.CharField(
+        max_length=200, blank=True, help_text="Person or role who signed off."
+    )
+    acceptance_date = models.DateField(null=True, blank=True)
+    acceptance_expiry_date = models.DateField(null=True, blank=True)
+
+    notes = models.TextField(blank=True)
+
+    # Empty means active. Set when archived, cleared when restored (Step 6).
+    archived_at = models.DateTimeField(null=True, blank=True, editable=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["id"]
+        # Second line of defence: the database itself refuses values outside 1–5,
+        # even if something bypasses the validation in `clean`.
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(inherent_likelihood__gte=1, inherent_likelihood__lte=5),
+                name="inherent_likelihood_1_to_5",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(inherent_impact__gte=1, inherent_impact__lte=5),
+                name="inherent_impact_1_to_5",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.risk_id or 'New risk'}: {self.title}"
+
+    @property
+    def inherent_rating(self):
+        """The rating label (Low/Medium/High/Critical) for the inherent score."""
+        if self.inherent_score is None:
+            return ""
+        return rating_for_score(self.inherent_score)
+
+    def clean(self):
+        """
+        Check the rules that involve more than one field.
+
+        Input: the risk as filled in. Output: nothing if valid; otherwise a
+        ValidationError listing each problem next to the field it concerns.
+        Single-field rules (required fields, 1–5 scales) are checked by Django
+        from the field definitions above.
+        """
+        errors = {}
+        errors.update(self._check_response_rules())
+        errors.update(self._check_acceptance_rules())
+        if errors:
+            raise ValidationError(errors)
+
+    def _check_response_rules(self):
+        """Return errors for the response type and description rules."""
+        errors = {}
+        statuses_needing_response = (self.Status.IN_TREATMENT, self.Status.MONITORING)
+        if self.status in statuses_needing_response and not self.response_type:
+            errors["response_type"] = (
+                "Choose a response type when the status is In treatment or Monitoring."
+            )
+        if self.response_type and not self.response_description.strip():
+            errors["response_description"] = "Describe the chosen risk response."
+        return errors
+
+    def _check_acceptance_rules(self):
+        """
+        Return errors for the risk-acceptance fields.
+
+        When the response is Accept, the approver and both dates are required
+        and the expiry must be after the acceptance date. For any other
+        response they must be empty, so no stale sign-off is left behind.
+        """
+        errors = {}
+        if self.response_type == self.ResponseType.ACCEPT:
+            if not self.accepted_by.strip():
+                errors["accepted_by"] = "Record who accepted the risk."
+            if not self.acceptance_date:
+                errors["acceptance_date"] = "Record when the risk was accepted."
+            if not self.acceptance_expiry_date:
+                errors["acceptance_expiry_date"] = "Record when the acceptance expires."
+            if (
+                self.acceptance_date
+                and self.acceptance_expiry_date
+                and self.acceptance_expiry_date <= self.acceptance_date
+            ):
+                errors["acceptance_expiry_date"] = (
+                    "The expiry date must be after the acceptance date."
+                )
+        else:
+            message = "Only fill this in when the response type is Accept."
+            if self.accepted_by.strip():
+                errors["accepted_by"] = message
+            if self.acceptance_date:
+                errors["acceptance_date"] = message
+            if self.acceptance_expiry_date:
+                errors["acceptance_expiry_date"] = message
+        return errors
+
+    def save(self, *args, **kwargs):
+        """
+        Save the risk, recalculating its score and assigning a Risk ID.
+
+        The score is recalculated on every save, so it can never drift out of
+        sync with likelihood and impact.
+
+        The Risk ID is based on the database's record number, which SQLite
+        never hands out twice, so an ID is never reused. That number only
+        exists after the first save, so a new risk is saved, then given its
+        ID. Both happen in one transaction: either both succeed or neither.
+        """
+        self.inherent_score = calculate_inherent_score(
+            self.inherent_likelihood, self.inherent_impact
+        )
+        with transaction.atomic():
+            super().save(*args, **kwargs)
+            if not self.risk_id:
+                self.risk_id = f"RISK-{self.pk:04d}"
+                super().save(update_fields=["risk_id"])
