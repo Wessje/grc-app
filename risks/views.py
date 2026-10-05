@@ -13,26 +13,34 @@ from django.core.exceptions import PermissionDenied
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
+from risks.filters import (
+    RegisterFilterForm,
+    column_headings,
+    filter_and_sort_risks,
+    valid_choices,
+)
 from risks.forms import RiskForm
 from risks.history import archive_risk, restore_risk, save_risk_with_history
 from risks.models import Risk
 
-# Statuses shown in the register by default. Closed risks are reached
-# through the status filter (Step 7).
-ACTIVE_STATUSES = [Risk.Status.OPEN, Risk.Status.IN_TREATMENT, Risk.Status.MONITORING]
-
 
 def risk_list(request):
     """
-    Show the register: risks that are not archived and not Closed.
+    Show the register, filtered, searched and sorted as chosen in the filter bar.
 
-    Input: the web request. Output: the list page.
+    Input: the web request; the choices are in the web address. Output: the
+    list page. By default it shows non-archived Open, In treatment and
+    Monitoring risks, sorted by Risk ID.
     """
-    risks = (
-        Risk.objects.filter(archived_at__isnull=True, status__in=ACTIVE_STATUSES)
-        .select_related("category")  # fetch categories in the same query
-    )
-    return render(request, "risks/risk_list.html", {"risks": risks})
+    filter_form = RegisterFilterForm(request.GET)
+    choices = valid_choices(filter_form)
+    risks = filter_and_sort_risks(choices)
+    return render(request, "risks/risk_list.html", {
+        "risks": risks,
+        "filter_form": filter_form,
+        "columns": column_headings(request.GET, choices.get("sort")),
+        "is_filtered": any(choices.get(name) for name in ["status", "category", "rating", "q"]),
+    })
 
 
 def risk_detail(request, pk):

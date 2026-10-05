@@ -24,6 +24,7 @@ from risks.models import (
     RiskChange,
     calculate_inherent_score,
     rating_for_score,
+    score_range_for_rating,
 )
 
 
@@ -430,10 +431,8 @@ class RiskPagesTests(TestCase):
 
         response = self.client.get(reverse("risks:risk_list"))
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Open risk")
-        self.assertContains(response, "Monitored risk")
-        self.assertNotContains(response, "Closed risk")
-        self.assertNotContains(response, "Archived risk")
+        titles = {risk.title for risk in response.context["risks"]}
+        self.assertEqual(titles, {"Open risk", "Monitored risk"})
 
     def test_list_shows_columns_and_rating(self):
         risk = self.save_risk(inherent_likelihood=5, inherent_impact=5)
@@ -708,3 +707,96 @@ class ArchiveTests(TestCase):
         self.assertEqual(self.client.post(self.restore_url).status_code, 403)
         archive_page = self.client.get(reverse("risks:archived_risk_list"))
         self.assertNotContains(archive_page, ">Restore</button>")
+
+
+class RatingRangeTests(TestCase):
+    """Each rating maps to the score range of its band."""
+
+    def test_score_ranges(self):
+        self.assertEqual(score_range_for_rating("Low"), (1, 4))
+        self.assertEqual(score_range_for_rating("Medium"), (5, 9))
+        self.assertEqual(score_range_for_rating("High"), (10, 16))
+        self.assertEqual(score_range_for_rating("Critical"), (17, 25))
+
+
+class RegisterFilterTests(TestCase):
+    """Filters, search and sorting on the register page."""
+
+    def setUp(self):
+        user = get_user_model().objects.create_user(username="w", password="test-password-123")
+        self.client.force_login(user)
+        cyber = RiskCategory.objects.create(name="Cyber")
+        finance = RiskCategory.objects.create(name="Financial")
+        mitigate = {"response_type": Risk.ResponseType.MITIGATE, "response_description": "MFA"}
+        # (title, category, likelihood, impact, status) -> scores 16, 20, 4, 12, 6
+        for title, category, likelihood, impact, status in [
+            ("Phishing attack", cyber, 4, 4, Risk.Status.OPEN),
+            ("Currency swings", finance, 4, 5, Risk.Status.IN_TREATMENT),
+            ("Old printer", cyber, 1, 4, Risk.Status.CLOSED),
+            ("Supplier outage", finance, 3, 4, Risk.Status.MONITORING),
+            ("Archived thing", cyber, 2, 3, Risk.Status.OPEN),
+        ]:
+            extra = mitigate if status in (Risk.Status.IN_TREATMENT, Risk.Status.MONITORING) else {}
+            make_risk(category, title=title, inherent_likelihood=likelihood,
+                      inherent_impact=impact, status=status, **extra).save()
+        Risk.objects.filter(title="Archived thing").update(archived_at=timezone.now())
+        self.cyber = cyber
+
+    def titles_shown(self, **params):
+        """Open the register with the given filters. Output: titles in display order."""
+        response = self.client.get(reverse("risks:risk_list"), params)
+        self.assertEqual(response.status_code, 200)
+        return [risk.title for risk in response.context["risks"]]
+
+    def test_default_shows_active_non_archived_risks(self):
+        self.assertEqual(self.titles_shown(),
+                         ["Phishing attack", "Currency swings", "Supplier outage"])
+
+    def test_status_filter(self):
+        self.assertEqual(self.titles_shown(status="closed"), ["Old printer"])
+        self.assertEqual(self.titles_shown(status="open"), ["Phishing attack"])
+        self.assertEqual(len(self.titles_shown(status="all")), 4)  # archived still excluded
+
+    def test_category_filter(self):
+        self.assertEqual(self.titles_shown(category=self.cyber.pk), ["Phishing attack"])
+
+    def test_rating_filter(self):
+        self.assertEqual(self.titles_shown(rating="High"), ["Phishing attack", "Supplier outage"])
+        self.assertEqual(self.titles_shown(rating="Critical"), ["Currency swings"])
+        self.assertEqual(self.titles_shown(rating="Low", status="all"), ["Old printer"])
+
+    def test_filters_combine(self):
+        self.assertEqual(self.titles_shown(rating="High", status="open"), ["Phishing attack"])
+
+    def test_search_title_and_description_ignoring_case(self):
+        self.assertEqual(self.titles_shown(q="PHISH"), ["Phishing attack"])
+        # make_risk gives every risk the description "Made-up test risk."
+        self.assertEqual(len(self.titles_shown(q="made-up")), 3)
+        self.assertEqual(self.titles_shown(q="nothing like this"), [])
+
+    def test_sort_by_score_both_directions(self):
+        self.assertEqual(self.titles_shown(sort="score"),
+                         ["Supplier outage", "Phishing attack", "Currency swings"])
+        self.assertEqual(self.titles_shown(sort="-score"),
+                         ["Currency swings", "Phishing attack", "Supplier outage"])
+
+    def test_sort_by_status_follows_lifecycle(self):
+        self.assertEqual(self.titles_shown(sort="status", status="all"),
+                         ["Phishing attack", "Currency swings", "Supplier outage", "Old printer"])
+
+    def test_invalid_values_are_ignored(self):
+        default = self.titles_shown()
+        self.assertEqual(self.titles_shown(status="nonsense", sort="password", rating="Huge",
+                                           category="abc"), default)
+
+    def test_sort_links_keep_filters_and_reverse_direction(self):
+        response = self.client.get(reverse("risks:risk_list"), {"status": "all", "sort": "score"})
+        score_column = next(c for c in response.context["columns"] if c["label"] == "Inherent score")
+        self.assertIn("status=all", score_column["query"])
+        self.assertIn("sort=-score", score_column["query"])
+        self.assertEqual(score_column["arrow"], "▲")
+
+    def test_closed_option_reaches_closed_sample_risk(self):
+        response = self.client.get(reverse("risks:risk_list"), {"status": "closed"})
+        self.assertContains(response, "Old printer")
+        self.assertContains(response, "Clear filters")

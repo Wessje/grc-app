@@ -66,6 +66,21 @@ def rating_for_score(score):
     return RATING_BANDS[-1][1]
 
 
+def score_range_for_rating(rating):
+    """
+    Return the lowest and highest score that give a rating.
+
+    Input: a rating label, e.g. "High". Output: (lowest, highest), e.g. (10, 16),
+    worked out from RATING_BANDS so it follows any change to the bands.
+    """
+    lowest = 1
+    for highest_score_in_band, band_rating in RATING_BANDS:
+        if band_rating == rating:
+            return lowest, highest_score_in_band
+        lowest = highest_score_in_band + 1
+    raise ValueError(f"Unknown rating: {rating}")
+
+
 # --- Tables ----------------------------------------------------------------
 
 

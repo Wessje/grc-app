@@ -111,6 +111,46 @@ table.register td.number {
     text-align: right;
 }
 
+/* Column headings are links that sort the table. */
+table.register th a.sort-link {
+    color: inherit;
+    text-decoration: none;
+}
+
+table.register th a.sort-link:hover {
+    text-decoration: underline;
+}
+
+/* --- Filter bar above the register --- */
+
+.filter-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 12px;
+    margin-bottom: 8px;
+    padding: 12px;
+    background: #fff;
+    border: 1px solid #d9e2ec;
+}
+
+.filter-bar label {
+    display: flex;
+    flex-direction: column;
+    font-size: 13px;
+    font-weight: bold;
+    color: #52606d;
+}
+
+.filter-bar select,
+.filter-bar input {
+    margin-top: 2px;
+    padding: 5px;
+    font: inherit;
+    font-weight: normal;
+    color: #1f2933;
+}
+
 /* Keep short values such as "RISK-0001" and "In treatment" on one line. */
 table.register .nowrap {
     white-space: nowrap;
