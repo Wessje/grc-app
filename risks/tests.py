@@ -621,3 +621,90 @@ class HistoryRowProtectionTests(TestCase):
             change.delete()
         with self.assertRaises(ProtectedError):
             risk.delete()
+
+
+class ArchiveTests(TestCase):
+    """Archiving hides a risk from the register; restoring brings it back."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_superuser(
+            username="w", password="test-password-123"
+        )
+        self.client.force_login(self.user)
+        self.risk = make_risk(RiskCategory.objects.create(name="Cyber"),
+                              title="Risk to archive", status=Risk.Status.CLOSED)
+        self.risk.save()
+        self.archive_url = reverse("risks:risk_archive", args=[self.risk.pk])
+        self.restore_url = reverse("risks:risk_restore", args=[self.risk.pk])
+
+    def test_confirmation_page_does_not_archive_yet(self):
+        response = self.client.get(self.archive_url)
+        self.assertContains(response, "Archive risk")
+        self.risk.refresh_from_db()
+        self.assertIsNone(self.risk.archived_at)
+
+    def test_archive_hides_from_register_and_shows_in_archive(self):
+        self.risk.status = Risk.Status.OPEN
+        self.risk.save()
+        self.assertContains(self.client.get(reverse("risks:risk_list")), "Risk to archive")
+
+        response = self.client.post(self.archive_url)
+        self.assertRedirects(response, reverse("risks:risk_list"))
+        self.risk.refresh_from_db()
+        self.assertIsNotNone(self.risk.archived_at)
+        self.assertEqual(self.risk.status, Risk.Status.OPEN)  # status is kept
+        self.assertNotContains(self.client.get(reverse("risks:risk_list")), "Risk to archive")
+        self.assertContains(self.client.get(reverse("risks:archived_risk_list")), "Risk to archive")
+
+    def test_restore_brings_risk_back(self):
+        self.client.post(self.archive_url)
+        response = self.client.post(self.restore_url)
+        self.assertRedirects(response, reverse("risks:risk_detail", args=[self.risk.pk]))
+        self.risk.refresh_from_db()
+        self.assertIsNone(self.risk.archived_at)
+        self.assertNotContains(
+            self.client.get(reverse("risks:archived_risk_list")), "Risk to archive"
+        )
+
+    def test_archive_and_restore_are_recorded_in_history(self):
+        self.client.post(self.archive_url)
+        self.client.post(self.restore_url)
+        events = [(c.field_name, c.changed_by) for c in self.risk.changes.all()]
+        self.assertEqual(events, [("Restored", self.user), ("Archived", self.user)])
+
+    def test_archiving_twice_records_one_event(self):
+        self.client.post(self.archive_url)
+        self.client.post(self.archive_url)
+        self.assertEqual(self.risk.changes.filter(field_name="Archived").count(), 1)
+
+    def test_archived_risk_detail_shows_restore_not_edit(self):
+        self.client.post(self.archive_url)
+        response = self.client.get(reverse("risks:risk_detail", args=[self.risk.pk]))
+        self.assertContains(response, "read-only until it is restored")
+        self.assertContains(response, ">Restore</button>")
+        self.assertNotContains(response, ">Edit</a>")
+
+    def test_edit_page_refused_while_archived(self):
+        self.client.post(self.archive_url)
+        response = self.client.get(reverse("risks:risk_edit", args=[self.risk.pk]))
+        self.assertEqual(response.status_code, 403)
+
+    def test_restore_only_accepts_form_submissions(self):
+        self.client.post(self.archive_url)
+        self.assertEqual(self.client.get(self.restore_url).status_code, 405)
+        self.risk.refresh_from_db()
+        self.assertIsNotNone(self.risk.archived_at)
+
+    def test_users_without_permission_cannot_archive_or_restore(self):
+        reader = get_user_model().objects.create_user(username="reader", password="x-Long-pw-123")
+        self.client.force_login(reader)
+        self.assertEqual(self.client.post(self.archive_url).status_code, 403)
+        self.risk.refresh_from_db()
+        self.assertIsNone(self.risk.archived_at)
+
+        self.client.force_login(self.user)
+        self.client.post(self.archive_url)
+        self.client.force_login(reader)
+        self.assertEqual(self.client.post(self.restore_url).status_code, 403)
+        archive_page = self.client.get(reverse("risks:archived_risk_list"))
+        self.assertNotContains(archive_page, ">Restore</button>")

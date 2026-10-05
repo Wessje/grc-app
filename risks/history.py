@@ -4,9 +4,12 @@ Records the change history (audit trail) of risks.
 Every save of a risk – from our own forms or the admin screen – goes through
 `save_risk_with_history`, so no edit goes unrecorded. It compares the risk
 before and after the save and writes one RiskChange row per changed field.
+Archiving and restoring go through `archive_risk` and `restore_risk`, which
+record an "Archived" or "Restored" event.
 """
 
 from django.db import transaction
+from django.utils import timezone
 from django.utils.formats import date_format
 
 from risks.models import Risk, RiskChange
@@ -100,3 +103,35 @@ def save_risk_with_history(risk, user):
                     new_value=after[field_name],
                     changed_by=user,
                 )
+
+
+def archive_risk(risk, user):
+    """
+    Archive a risk (take it out of the register without deleting it).
+
+    Inputs: the risk and the logged-in user. Output: nothing. Sets
+    "Archived at" to now and records an "Archived" event. Does nothing if the
+    risk is already archived, so the event is never recorded twice.
+    """
+    if risk.archived_at is not None:
+        return
+    with transaction.atomic():
+        risk.archived_at = timezone.now()
+        risk.save()
+        RiskChange.objects.create(risk=risk, field_name="Archived", changed_by=user)
+
+
+def restore_risk(risk, user):
+    """
+    Restore an archived risk to the register.
+
+    Inputs: the risk and the logged-in user. Output: nothing. Clears
+    "Archived at" and records a "Restored" event. Does nothing if the risk is
+    not archived.
+    """
+    if risk.archived_at is None:
+        return
+    with transaction.atomic():
+        risk.archived_at = None
+        risk.save()
+        RiskChange.objects.create(risk=risk, field_name="Restored", changed_by=user)

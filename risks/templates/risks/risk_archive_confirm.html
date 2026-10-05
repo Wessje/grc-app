@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% comment %}
+Confirmation page shown before a risk is archived.
+{% endcomment %}
+
+{% block title %}Archive {{ risk.risk_id }}{% endblock %}
+
+{% block content %}
+<h1>Archive {{ risk.risk_id }}: {{ risk.title }}?</h1>
+
+<p>Archiving takes this risk out of the register. It is <strong>not deleted</strong>:</p>
+<ul>
+    <li>it stays on the Archive page, with all its fields and history;</li>
+    <li>it becomes read-only until it is restored;</li>
+    <li>its status ({{ risk.get_status_display }}) is kept;</li>
+    <li>archiving is recorded in its change history.</li>
+</ul>
+
+<form method="post" class="button-row">
+    {% csrf_token %}
+    <button type="submit" class="button button-warning">Archive risk</button>
+    <a href="{% url 'risks:risk_detail' risk.pk %}">Cancel</a>
+</form>
+{% endblock %}

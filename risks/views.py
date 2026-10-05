@@ -11,9 +11,10 @@ from django.contrib import messages
 from django.contrib.auth.decorators import permission_required
 from django.core.exceptions import PermissionDenied
 from django.shortcuts import get_object_or_404, redirect, render
+from django.views.decorators.http import require_POST
 
 from risks.forms import RiskForm
-from risks.history import save_risk_with_history
+from risks.history import archive_risk, restore_risk, save_risk_with_history
 from risks.models import Risk
 
 # Statuses shown in the register by default. Closed risks are reached
@@ -89,3 +90,53 @@ def risk_edit(request, pk):
     else:
         form = RiskForm(instance=risk)
     return render(request, "risks/risk_form.html", {"form": form, "risk": risk})
+
+
+def archived_risk_list(request):
+    """
+    Show the archive: all archived risks, most recently archived first.
+
+    Input: the web request. Output: the archive page.
+    """
+    risks = (
+        Risk.objects.filter(archived_at__isnull=False)
+        .select_related("category")
+        .order_by("-archived_at")
+    )
+    return render(request, "risks/archived_risk_list.html", {"risks": risks})
+
+
+@permission_required("risks.change_risk", raise_exception=True)
+def risk_archive(request, pk):
+    """
+    Ask for confirmation, then archive a risk.
+
+    Inputs: the web request and the risk's record number.
+    Output: the confirmation page (first visit), or – after confirming – a
+    redirect to the register. An already archived risk goes to its detail page.
+    """
+    risk = get_object_or_404(Risk, pk=pk)
+    if risk.archived_at is not None:
+        messages.info(request, f"{risk.risk_id} is already archived.")
+        return redirect("risks:risk_detail", pk=risk.pk)
+    if request.method == "POST":
+        archive_risk(risk, request.user)
+        messages.success(request, f"{risk.risk_id} archived. Find it under Archive.")
+        return redirect("risks:risk_list")
+    return render(request, "risks/risk_archive_confirm.html", {"risk": risk})
+
+
+@require_POST
+@permission_required("risks.change_risk", raise_exception=True)
+def risk_restore(request, pk):
+    """
+    Restore an archived risk to the register.
+
+    Inputs: the web request (must be a form submission, not a link) and the
+    risk's record number. Output: a redirect to the risk's detail page.
+    """
+    risk = get_object_or_404(Risk, pk=pk)
+    if risk.archived_at is not None:
+        restore_risk(risk, request.user)
+        messages.success(request, f"{risk.risk_id} restored to the register.")
+    return redirect("risks:risk_detail", pk=risk.pk)

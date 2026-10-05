@@ -7,17 +7,31 @@ Flags expired acceptances and archived risks at the top.
 {% block title %}{{ risk.risk_id }}{% endblock %}
 
 {% block content %}
-<p><a href="{% url 'risks:risk_list' %}">← Back to risk register</a></p>
+{% if risk.archived_at %}
+    <p><a href="{% url 'risks:archived_risk_list' %}">← Back to archive</a></p>
+{% else %}
+    <p><a href="{% url 'risks:risk_list' %}">← Back to risk register</a></p>
+{% endif %}
 
 <div class="page-heading">
     <h1>{{ risk.risk_id }}: {{ risk.title }}</h1>
-    {% if perms.risks.change_risk and not risk.archived_at %}
-        <a class="button" href="{% url 'risks:risk_edit' risk.pk %}">Edit</a>
+    {% if perms.risks.change_risk %}
+        <div class="button-row">
+        {% if risk.archived_at %}
+            <form method="post" action="{% url 'risks:risk_restore' risk.pk %}">
+                {% csrf_token %}
+                <button type="submit" class="button">Restore</button>
+            </form>
+        {% else %}
+            <a class="button" href="{% url 'risks:risk_edit' risk.pk %}">Edit</a>
+            <a class="button button-warning" href="{% url 'risks:risk_archive' risk.pk %}">Archive</a>
+        {% endif %}
+        </div>
     {% endif %}
 </div>
 
 {% if risk.archived_at %}
-    <p class="notice">Archived on {{ risk.archived_at }}. This risk is read-only.</p>
+    <p class="notice">Archived on {{ risk.archived_at }}. This risk is read-only until it is restored.</p>
 {% endif %}
 {% if risk.is_acceptance_expired %}
     <p class="notice flag-notice">Acceptance expired on {{ risk.acceptance_expiry_date }}. Re-review this risk acceptance.</p>
