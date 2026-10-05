@@ -30,6 +30,9 @@ Pages fill in the "title" and "content" blocks.
         {% endif %}
     </header>
     <main>
+        {% for message in messages %}
+            <p class="message">{{ message }}</p>
+        {% endfor %}
         {% block content %}{% endblock %}
     </main>
 </body>

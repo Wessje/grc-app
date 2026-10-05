@@ -1,5 +1,6 @@
 """
-Database tables for the risk register: RiskCategory and Risk.
+Database tables for the risk register: RiskCategory, Risk and RiskChange
+(the change history).
 
 This file is the central definition of a risk. The validation rules live here
 (in `Risk.clean`), so the admin screen and our own forms enforce exactly the
@@ -7,6 +8,7 @@ same rules. The scoring scales and rating bands are also defined here, in one
 place, so they are easy to adjust later.
 """
 
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models, transaction
 from django.utils import timezone
@@ -256,3 +258,40 @@ class Risk(models.Model):
             if not self.risk_id:
                 self.risk_id = f"RISK-{self.pk:04d}"
                 super().save(update_fields=["risk_id"])
+
+
+class RiskChange(models.Model):
+    """
+    One row of a risk's change history (audit trail).
+
+    Each changed field gets its own row, e.g. "Inherent likelihood:
+    3 – Possible → 4 – Likely". Events (Created, and later Archived/Restored)
+    are stored with the event name in `field_name`. Rows are written only by
+    risks/history.py and are never edited or deleted.
+    """
+
+    # PROTECT: a risk or user with history cannot be deleted, so the audit
+    # trail can't lose its context. Deactivate users instead of deleting them.
+    risk = models.ForeignKey(Risk, on_delete=models.PROTECT, related_name="changes")
+    field_name = models.CharField(max_length=100)
+    old_value = models.TextField(blank=True)
+    new_value = models.TextField(blank=True)
+    changed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    changed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        # Newest first; the record number breaks ties within the same save.
+        ordering = ["-changed_at", "-id"]
+
+    def __str__(self):
+        return f"{self.risk.risk_id} {self.field_name}: {self.old_value} → {self.new_value}"
+
+    def save(self, *args, **kwargs):
+        """Save a new history row. Refuses to change an existing one."""
+        if self.pk is not None:
+            raise ValueError("History rows cannot be edited.")
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        """Refuse to delete a history row."""
+        raise ValueError("History rows cannot be deleted.")

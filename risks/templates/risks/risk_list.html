@@ -7,7 +7,10 @@ Each rating is colour-coded and also written out, so it doesn't rely on colour a
 {% block title %}Risk register{% endblock %}
 
 {% block content %}
-<h1>Risk register</h1>
+<div class="page-heading">
+    <h1>Risk register</h1>
+    {% if perms.risks.add_risk %}<a class="button" href="{% url 'risks:risk_create' %}">New risk</a>{% endif %}
+</div>
 <p class="hint">Showing Open, In treatment and Monitoring risks. Closed and archived risks are not shown.</p>
 
 {% if risks %}
@@ -41,6 +44,6 @@ Each rating is colour-coded and also written out, so it doesn't rely on colour a
     </tbody>
 </table>
 {% else %}
-<p>No active risks. Add risks in the admin screen, or run <code>python manage.py load_sample_risks</code>.</p>
+<p>No active risks. Add a risk with "New risk", or run <code>python manage.py load_sample_risks</code>.</p>
 {% endif %}
 {% endblock %}

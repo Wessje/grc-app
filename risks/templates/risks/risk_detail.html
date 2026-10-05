@@ -9,7 +9,12 @@ Flags expired acceptances and archived risks at the top.
 {% block content %}
 <p><a href="{% url 'risks:risk_list' %}">← Back to risk register</a></p>
 
-<h1>{{ risk.risk_id }}: {{ risk.title }}</h1>
+<div class="page-heading">
+    <h1>{{ risk.risk_id }}: {{ risk.title }}</h1>
+    {% if perms.risks.change_risk and not risk.archived_at %}
+        <a class="button" href="{% url 'risks:risk_edit' risk.pk %}">Edit</a>
+    {% endif %}
+</div>
 
 {% if risk.archived_at %}
     <p class="notice">Archived on {{ risk.archived_at }}. This risk is read-only.</p>
@@ -62,5 +67,29 @@ Flags expired acceptances and archived risks at the top.
         <dt>Created</dt><dd>{{ risk.created_at }}</dd>
         <dt>Last updated</dt><dd>{{ risk.updated_at }}</dd>
     </dl>
+</section>
+
+<section class="history">
+    <h2>Change history</h2>
+    {% if changes %}
+    <table class="register">
+        <thead>
+            <tr><th>When</th><th>Who</th><th>Field</th><th>Old value</th><th>New value</th></tr>
+        </thead>
+        <tbody>
+            {% for change in changes %}
+            <tr>
+                <td class="nowrap">{{ change.changed_at }}</td>
+                <td>{{ change.changed_by.get_username }}</td>
+                <td>{{ change.field_name }}</td>
+                <td class="multiline">{{ change.old_value }}</td>
+                <td class="multiline">{{ change.new_value }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="hint">No changes recorded yet. Changes made from now on, in these pages or the admin screen, appear here.</p>
+    {% endif %}
 </section>
 {% endblock %}

@@ -3,10 +3,12 @@ Shows risks and risk categories in Django's admin screen (/admin/).
 
 The Risk ID, score and rating are shown but cannot be edited. Risks cannot be
 deleted (archive instead, from Step 6), and archived risks are read-only.
+Every save is recorded in the change history (see risks/history.py).
 """
 
 from django.contrib import admin
 
+from risks.history import save_risk_with_history
 from risks.models import Risk, RiskCategory
 
 
@@ -62,6 +64,15 @@ class RiskAdmin(admin.ModelAdmin):
     def is_archived(self, risk):
         """Show a tick/cross for whether a risk is archived."""
         return risk.archived_at is not None
+
+    def save_model(self, request, risk, form, change):
+        """
+        Save a risk from the admin screen, recording its change history.
+
+        Uses the same helper as our own forms, so admin edits are in the
+        audit trail too.
+        """
+        save_risk_with_history(risk, request.user)
 
     def has_change_permission(self, request, risk=None):
         """

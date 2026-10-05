@@ -1,6 +1,6 @@
 """
 Automated checks for the risk register: scoring, Risk IDs, validation rules,
-the admin screen, the sample data command, login and the list/detail pages.
+the admin screen, the sample data command, login, the pages and change history.
 
 Project-wide setup checks live in config/tests.py.
 Run with: python manage.py test
@@ -18,7 +18,13 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from risks.models import Risk, RiskCategory, calculate_inherent_score, rating_for_score
+from risks.models import (
+    Risk,
+    RiskCategory,
+    RiskChange,
+    calculate_inherent_score,
+    rating_for_score,
+)
 
 
 def make_risk(category, **overrides):
@@ -465,3 +471,153 @@ class RiskPagesTests(TestCase):
     def test_detail_page_of_unknown_risk_is_not_found(self):
         response = self.client.get(reverse("risks:risk_detail", args=[9999]))
         self.assertEqual(response.status_code, 404)
+
+
+def risk_form_data(category, **overrides):
+    """Return valid data for the New/Edit risk form, with any fields changed."""
+    data = {
+        "title": "Ransomware on file server",
+        "description": "Made-up test risk.",
+        "category": category.pk,
+        "owner": "IT manager",
+        "risk_source": "File server",
+        "date_identified": "2026-10-05",
+        "inherent_likelihood": 3,
+        "inherent_impact": 4,
+        "status": Risk.Status.OPEN,
+    }
+    data.update(overrides)
+    return data
+
+
+class RiskFormPagesTests(TestCase):
+    """The New and Edit pages validate input and record history."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_superuser(
+            username="w", password="test-password-123"
+        )
+        self.client.force_login(self.user)
+        self.category = RiskCategory.objects.create(name="Cyber")
+
+    def test_empty_form_is_rejected_with_messages(self):
+        response = self.client.post(reverse("risks:risk_create"), {})
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Please correct the errors below.")
+        self.assertContains(response, "This field is required.")
+        self.assertFalse(Risk.objects.exists())
+
+    def test_model_rules_apply_to_the_form(self):
+        data = risk_form_data(self.category, response_type=Risk.ResponseType.ACCEPT,
+                              response_description="Within appetite.")
+        response = self.client.post(reverse("risks:risk_create"), data)
+        self.assertContains(response, "Record who accepted the risk.")
+        self.assertFalse(Risk.objects.exists())
+
+    def test_form_shows_scale_labels(self):
+        response = self.client.get(reverse("risks:risk_create"))
+        self.assertContains(response, "3 – Possible")
+        self.assertContains(response, "5 – Severe")
+
+    def test_create_saves_risk_and_records_created(self):
+        response = self.client.post(reverse("risks:risk_create"), risk_form_data(self.category))
+        risk = Risk.objects.get()
+        self.assertRedirects(response, reverse("risks:risk_detail", args=[risk.pk]))
+        self.assertEqual(risk.inherent_score, 12)
+        change = risk.changes.get()
+        self.assertEqual(change.field_name, "Created")
+        self.assertEqual(change.changed_by, self.user)
+
+    def test_edit_records_one_row_per_changed_field(self):
+        self.client.post(reverse("risks:risk_create"), risk_form_data(self.category))
+        risk = Risk.objects.get()
+
+        self.client.post(
+            reverse("risks:risk_edit", args=[risk.pk]),
+            risk_form_data(self.category, inherent_likelihood=4),
+        )
+        changes = {c.field_name: (c.old_value, c.new_value)
+                   for c in risk.changes.exclude(field_name="Created")}
+        self.assertEqual(changes, {
+            "Inherent likelihood": ("3 – Possible", "4 – Likely"),
+            "Inherent score": ("12", "16"),
+        })
+
+    def test_saving_without_changes_records_nothing(self):
+        self.client.post(reverse("risks:risk_create"), risk_form_data(self.category))
+        risk = Risk.objects.get()
+        self.client.post(reverse("risks:risk_edit", args=[risk.pk]), risk_form_data(self.category))
+        self.assertEqual(risk.changes.count(), 1)  # only "Created"
+
+    def test_history_is_shown_newest_first(self):
+        self.client.post(reverse("risks:risk_create"), risk_form_data(self.category))
+        risk = Risk.objects.get()
+        self.client.post(reverse("risks:risk_edit", args=[risk.pk]),
+                         risk_form_data(self.category, owner="CISO"))
+        page = self.client.get(reverse("risks:risk_detail", args=[risk.pk])).content.decode()
+        self.assertLess(page.index("CISO"), page.index("Created"))
+
+    def test_archived_risk_cannot_be_edited(self):
+        risk = make_risk(self.category, archived_at=timezone.now())
+        risk.save()
+        edit_url = reverse("risks:risk_edit", args=[risk.pk])
+        self.assertEqual(self.client.get(edit_url).status_code, 403)
+        response = self.client.post(edit_url, risk_form_data(self.category, title="Changed"))
+        self.assertEqual(response.status_code, 403)
+        risk.refresh_from_db()
+        self.assertEqual(risk.title, "Ransomware on file server")
+
+    def test_users_without_permission_cannot_create_or_edit(self):
+        risk = make_risk(self.category)
+        risk.save()
+        reader = get_user_model().objects.create_user(username="reader", password="x-Long-pw-123")
+        self.client.force_login(reader)
+        self.assertEqual(self.client.get(reverse("risks:risk_create")).status_code, 403)
+        self.assertEqual(
+            self.client.get(reverse("risks:risk_edit", args=[risk.pk])).status_code, 403
+        )
+        detail = self.client.get(reverse("risks:risk_detail", args=[risk.pk]))
+        self.assertNotContains(detail, ">Edit</a>")
+
+
+class AdminHistoryTests(TestCase):
+    """Saves made in the admin screen are also recorded in the history."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_superuser(
+            username="admin", password="test-password-123"
+        )
+        self.client.force_login(self.user)
+        self.category = RiskCategory.objects.create(name="Cyber")
+
+    def test_admin_add_and_edit_are_recorded(self):
+        data = risk_form_data(self.category, date_identified="05/10/2026")
+        self.client.post(reverse("admin:risks_risk_add"), data)
+        risk = Risk.objects.get()
+
+        data["status"] = Risk.Status.CLOSED
+        self.client.post(reverse("admin:risks_risk_change", args=[risk.pk]), data)
+
+        rows = [(c.field_name, c.old_value, c.new_value, c.changed_by)
+                for c in risk.changes.all()]
+        self.assertEqual(rows, [
+            ("Status", "Open", "Closed", self.user),
+            ("Created", "", risk.risk_id, self.user),
+        ])
+
+
+class HistoryRowProtectionTests(TestCase):
+    """History rows cannot be edited or deleted."""
+
+    def test_history_rows_are_write_once(self):
+        user = get_user_model().objects.create_user(username="w", password="x-Long-pw-123")
+        risk = make_risk(RiskCategory.objects.create(name="Cyber"))
+        risk.save()
+        change = RiskChange.objects.create(risk=risk, field_name="Created", changed_by=user)
+        change.new_value = "tampered"
+        with self.assertRaises(ValueError):
+            change.save()
+        with self.assertRaises(ValueError):
+            change.delete()
+        with self.assertRaises(ProtectedError):
+            risk.delete()
