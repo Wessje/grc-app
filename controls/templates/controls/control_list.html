@@ -9,6 +9,12 @@ The control register: controls that are not archived.
 <h1>Controls</h1>
 <p class="hint">Safeguards that reduce risk. Add or edit them in the admin screen. Archived controls are not shown.</p>
 
+<form method="get" class="filter-bar">
+    <label>Framework {{ filter_form.framework }}</label>
+    <button type="submit" class="button">Apply</button>
+    {% if is_filtered %}<a href="{% url 'controls:control_list' %}">Clear filter</a>{% endif %}
+</form>
+
 {% if controls %}
 <table class="register">
     <thead>
@@ -35,6 +41,10 @@ The control register: controls that are not archived.
     </tbody>
 </table>
 {% else %}
+{% if is_filtered %}
+<p>No controls are mapped to this framework.</p>
+{% else %}
 <p>No controls yet. Add them in the admin screen, or run <code>python manage.py load_sample_controls</code>.</p>
+{% endif %}
 {% endif %}
 {% endblock %}

@@ -375,6 +375,51 @@ class ControlPageTests(TestCase):
         self.assertContains(response, "read-only until it is restored")
 
 
+class FrameworkPageTests(TestCase):
+    """Framework mappings on the control page, and the framework filter on the list."""
+
+    def setUp(self):
+        user = get_user_model().objects.create_user(username="w", password="test-password-123")
+        self.client.force_login(user)
+        call_command("load_sample_risks")
+        call_command("load_sample_controls")
+        call_command("load_sample_requirements")
+        self.mfa = Control.objects.get(title="Multi-factor authentication")
+
+    def titles(self, **params):
+        """Open the control list with the given filter. Output: the titles shown."""
+        response = self.client.get(reverse("controls:control_list"), params)
+        self.assertEqual(response.status_code, 200)
+        return [control.title for control in response.context["controls"]]
+
+    def test_detail_lists_mapped_requirements(self):
+        response = self.client.get(reverse("controls:control_detail", args=[self.mfa.pk]))
+        self.assertContains(response, "ISO 27001")
+        self.assertContains(response, "A.5.15")
+        self.assertContains(response, "Access is limited to people who need it")
+        self.assertContains(response, "PR.AA-01")
+        self.assertContains(response, "CC6.1")
+
+    def test_unmapped_control_says_so(self):
+        spare = make_control(title="Unmapped control")
+        spare.save()
+        response = self.client.get(reverse("controls:control_detail", args=[spare.pk]))
+        self.assertContains(response, "Not mapped to a framework requirement yet")
+
+    def test_framework_filter(self):
+        iso = self.titles(framework="iso_27001")
+        self.assertIn("Multi-factor authentication", iso)
+        self.assertIn("Offline backups", iso)
+        self.assertNotIn("Quarterly access review", iso)
+
+        self.assertEqual(self.titles(framework="nonsense"), self.titles())
+
+    def test_filter_does_not_inflate_the_risk_count(self):
+        response = self.client.get(reverse("controls:control_list"), {"framework": "iso_27001"})
+        mfa = next(control for control in response.context["controls"] if control.pk == self.mfa.pk)
+        self.assertEqual(mfa.risk_count, 1)
+
+
 class FrameworkRequirementTests(TestCase):
     """Catalogue references are unique within one framework, and mappings are one-to-one."""
 
