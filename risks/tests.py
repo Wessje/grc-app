@@ -1,7 +1,7 @@
 """
 Automated checks for the risk register: scoring, Risk IDs, validation rules,
 the admin screen, the sample data and backup commands, login, the pages,
-change history, archiving and the register's filters.
+change history, archiving, the register's filters and the heat map.
 
 Project-wide setup checks live in config/tests.py.
 Run with: python manage.py test
@@ -32,6 +32,7 @@ from risks.models import (
     rating_for_score,
     score_range_for_rating,
 )
+from risks.heatmap import build_heat_map
 from risks.management.commands.backup_db import backup_file_path
 
 
@@ -860,3 +861,46 @@ class BackupTests(TransactionTestCase):
     def test_backups_folder_is_excluded_from_git(self):
         gitignore = (settings.BASE_DIR / ".gitignore").read_text().splitlines()
         self.assertIn("backups/", gitignore)
+
+
+class HeatMapTests(TestCase):
+    """The heat map counts the register's risks per likelihood/impact cell."""
+
+    def setUp(self):
+        self.category = RiskCategory.objects.create(name="Cyber")
+
+    def cell(self, heat_map, likelihood, impact):
+        """Return the heat map cell for a likelihood and impact (both 1–5)."""
+        row = heat_map["rows"][5 - likelihood]  # rows run from likelihood 5 down to 1
+        return row["cells"][impact - 1]
+
+    def test_layout_and_cell_colours(self):
+        heat_map = build_heat_map([])
+        self.assertEqual(heat_map["rows"][0]["label"], "5 – Almost certain")
+        self.assertEqual(heat_map["rows"][-1]["label"], "1 – Rare")
+        self.assertEqual(heat_map["impact_labels"][-1], "5 – Severe")
+        self.assertEqual(self.cell(heat_map, 1, 1)["rating"], "Low")
+        self.assertEqual(self.cell(heat_map, 3, 3)["rating"], "Medium")
+        self.assertEqual(self.cell(heat_map, 4, 4)["rating"], "High")
+        self.assertEqual(self.cell(heat_map, 5, 5)["rating"], "Critical")
+
+    def test_counts_per_cell(self):
+        risks = [make_risk(self.category, inherent_likelihood=4, inherent_impact=5),
+                 make_risk(self.category, inherent_likelihood=4, inherent_impact=5),
+                 make_risk(self.category, inherent_likelihood=1, inherent_impact=2)]
+        heat_map = build_heat_map(risks)
+        self.assertEqual(self.cell(heat_map, 4, 5)["count"], 2)
+        self.assertEqual(self.cell(heat_map, 1, 2)["count"], 1)
+        self.assertEqual(self.cell(heat_map, 2, 1)["count"], 0)
+
+    def test_register_heat_map_matches_the_filtered_list(self):
+        user = get_user_model().objects.create_user(username="w", password="test-password-123")
+        self.client.force_login(user)
+        call_command("load_sample_risks", stdout=StringIO())
+        for params in [{}, {"status": "all"}, {"rating": "High"}, {"status": "closed"}]:
+            with self.subTest(params):
+                response = self.client.get(reverse("risks:risk_list"), params)
+                heat_map = response.context["heat_map"]
+                total = sum(cell["count"] for row in heat_map["rows"] for cell in row["cells"])
+                self.assertEqual(total, len(response.context["risks"]))
+        self.assertContains(self.client.get(reverse("risks:risk_list")), "Heat map")

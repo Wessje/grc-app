@@ -20,6 +20,7 @@ from risks.filters import (
     valid_choices,
 )
 from risks.forms import RiskForm
+from risks.heatmap import build_heat_map
 from risks.history import archive_risk, restore_risk, save_risk_with_history
 from risks.models import Risk
 
@@ -29,14 +30,16 @@ def risk_list(request):
     Show the register, filtered, searched and sorted as chosen in the filter bar.
 
     Input: the web request; the choices are in the web address. Output: the
-    list page. By default it shows non-archived Open, In treatment and
-    Monitoring risks, sorted by Risk ID.
+    list page, with a heat map of the risks shown. By default it shows
+    non-archived Open, In treatment and Monitoring risks, sorted by Risk ID.
     """
     filter_form = RegisterFilterForm(request.GET)
     choices = valid_choices(filter_form)
-    risks = filter_and_sort_risks(choices)
+    # list() fetches the risks once, for both the heat map and the table.
+    risks = list(filter_and_sort_risks(choices))
     return render(request, "risks/risk_list.html", {
         "risks": risks,
+        "heat_map": build_heat_map(risks),
         "filter_form": filter_form,
         "columns": column_headings(request.GET, choices.get("sort")),
         "is_filtered": any(choices.get(name) for name in ["status", "category", "rating", "q"]),

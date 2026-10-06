@@ -172,6 +172,63 @@ table.register .nowrap {
 .rating-high     { background: #fbd38d; color: #7b341e; }
 .rating-critical { background: #c53030; color: #fff; }
 
+/* --- Heat map on the register page --- */
+
+.heat-map {
+    margin-bottom: 16px;
+    padding: 12px;
+    background: #fff;
+    border: 1px solid #d9e2ec;
+}
+
+.heat-map summary {
+    font-weight: bold;
+    cursor: pointer;
+}
+
+.heat-map table {
+    margin-top: 12px;
+    border-collapse: separate;
+    border-spacing: 3px;
+}
+
+.heat-map .cell {
+    width: 90px;
+    height: 44px;
+    text-align: center;
+    font-size: 18px;
+    font-weight: bold;
+}
+
+/* Empty cells keep their band colour, faded, so the map still reads as a heat map. */
+.heat-map .cell.empty {
+    opacity: 0.35;
+}
+
+.heat-map .axis-label {
+    padding: 0 6px;
+    font-size: 12px;
+    font-weight: normal;
+    color: #52606d;
+    text-align: right;
+}
+
+.heat-map tfoot .axis-label {
+    text-align: center;
+}
+
+.heat-map .axis-title {
+    font-size: 13px;
+    color: #52606d;
+}
+
+/* Turn the "Likelihood" title sideways along the left of the grid. */
+.heat-map th[rowspan] span {
+    display: inline-block;
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+}
+
 /* --- Flags and notices --- */
 
 .flag {

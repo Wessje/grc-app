@@ -30,6 +30,37 @@ Each rating is colour-coded and also written out, so it doesn't rely on colour a
 </p>
 
 {% if risks %}
+{# <details> makes the heat map collapsible without any JavaScript. #}
+<details class="heat-map" open>
+    <summary>Heat map (inherent risk) – number of risks shown, per likelihood and impact</summary>
+    <table>
+        <tbody>
+            {% for row in heat_map.rows %}
+            <tr>
+                {% if forloop.first %}<th rowspan="5" class="axis-title"><span>Likelihood</span></th>{% endif %}
+                <th scope="row" class="axis-label">{{ row.label }}</th>
+                {% for cell in row.cells %}
+                <td class="cell rating-{{ cell.rating|lower }}{% if not cell.count %} empty{% endif %}"
+                    title="{{ cell.description }}: {{ cell.count }} risk{{ cell.count|pluralize }} ({{ cell.rating }})">
+                    {% if cell.count %}{{ cell.count }}{% endif %}
+                </td>
+                {% endfor %}
+            </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr>
+                <td colspan="2"></td>
+                {% for label in heat_map.impact_labels %}<th scope="col" class="axis-label">{{ label }}</th>{% endfor %}
+            </tr>
+            <tr>
+                <td colspan="2"></td>
+                <th colspan="5" class="axis-title">Impact</th>
+            </tr>
+        </tfoot>
+    </table>
+</details>
+
 <table class="register">
     <thead>
         <tr>
