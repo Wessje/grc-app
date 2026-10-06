@@ -7,13 +7,14 @@ The Control ID is shown but cannot be edited. Controls cannot be deleted
 
 from django.contrib import admin
 
-from controls.models import Control, RiskControl
+from controls.models import Control, ControlRequirement, FrameworkRequirement, RiskControl
 
 
 @admin.register(Control)
 class ControlAdmin(admin.ModelAdmin):
     """Admin pages for controls."""
 
+    inlines = []  # filled in below, once the mapping inline exists
     list_display = ["control_id", "title", "owner", "control_type", "status", "is_archived"]
     list_filter = ["control_type", "status"]
     search_fields = ["control_id", "title", "description", "owner"]
@@ -48,6 +49,28 @@ class ControlAdmin(admin.ModelAdmin):
         Output: always False, which also removes the bulk "delete" action.
         """
         return False
+
+
+@admin.register(FrameworkRequirement)
+class FrameworkRequirementAdmin(admin.ModelAdmin):
+    """Admin pages for the ISO 27001, NIST CSF and SOC 2 catalogues."""
+
+    list_display = ["framework", "reference", "title"]
+    list_filter = ["framework"]
+    search_fields = ["reference", "title"]
+    ordering = ["framework", "reference"]
+
+
+class ControlRequirementInline(admin.TabularInline):
+    """Framework requirements mapped to one control, edited on the control's admin page."""
+
+    model = ControlRequirement
+    extra = 1
+    autocomplete_fields = ["requirement"]
+    fields = ["requirement"]
+
+
+ControlAdmin.inlines = [ControlRequirementInline]
 
 
 class RiskControlInline(admin.TabularInline):

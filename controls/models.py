@@ -1,9 +1,10 @@
 """
 The control register: one row per safeguard that reduces risk (for example
-MFA or backups), plus the links from those controls to the risks they address.
+MFA or backups), the links from those controls to the risks they address,
+and the links from controls to framework requirements.
 
-Residual risk is added in a later step. This file is the central definition
-of a control, so the admin screen and our own forms enforce the same rules.
+This file is the central definition of a control, so the admin screen and
+our own forms enforce the same rules.
 """
 
 from django.db import models, transaction
@@ -95,3 +96,68 @@ class RiskControl(models.Model):
 
     def __str__(self):
         return f"{self.control} → {self.risk} ({self.get_effectiveness_display()})"
+
+
+class FrameworkRequirement(models.Model):
+    """
+    One requirement from a framework catalogue.
+
+    The catalogues are reference lists (ISO 27001, NIST CSF, SOC 2): a
+    reference code and a short title we wrote, not the text of the standard.
+    """
+
+    class Framework(models.TextChoices):
+        ISO_27001 = "iso_27001", "ISO 27001"
+        NIST_CSF = "nist_csf", "NIST CSF"
+        SOC_2 = "soc_2", "SOC 2"
+
+    framework = models.CharField(max_length=20, choices=Framework)
+    reference = models.CharField(
+        max_length=30,
+        help_text="The requirement's own identifier, for example A.5.15 or PR.AA-01.",
+    )
+    title = models.CharField(max_length=200)
+
+    class Meta:
+        ordering = ["framework", "reference"]
+        verbose_name = "framework requirement"
+        constraints = [
+            # A.5.15 may exist in only one framework. The same code in another
+            # framework is a different requirement.
+            models.UniqueConstraint(
+                fields=["framework", "reference"], name="one_reference_per_framework"
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.get_framework_display()} {self.reference}: {self.title}"
+
+
+class ControlRequirement(models.Model):
+    """
+    One mapping: this control addresses this framework requirement.
+
+    One control can map to several requirements, including from different
+    frameworks. One requirement can be met by several controls. A control or
+    requirement that still has a mapping cannot be deleted.
+    """
+
+    control = models.ForeignKey(
+        Control, on_delete=models.PROTECT, related_name="requirement_links"
+    )
+    requirement = models.ForeignKey(
+        FrameworkRequirement, on_delete=models.PROTECT, related_name="control_links"
+    )
+
+    class Meta:
+        ordering = ["requirement__framework", "requirement__reference"]
+        verbose_name = "framework mapping"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["control", "requirement"],
+                name="one_mapping_per_control_and_requirement",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.control.control_id} → {self.requirement.reference}"

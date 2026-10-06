@@ -14,7 +14,7 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from controls.models import Control, RiskControl
+from controls.models import Control, ControlRequirement, FrameworkRequirement, RiskControl
 from risks.models import Risk, RiskCategory, RiskChange
 
 
@@ -98,6 +98,10 @@ class ControlAdminTests(TestCase):
             "control_type": Control.ControlType.CORRECTIVE,
             "status": Control.Status.IN_PLACE,
             "notes": "",
+            "requirement_links-TOTAL_FORMS": "0",
+            "requirement_links-INITIAL_FORMS": "0",
+            "requirement_links-MIN_NUM_FORMS": "0",
+            "requirement_links-MAX_NUM_FORMS": "1000",
         }
         data.update(overrides)
         return data
@@ -369,3 +373,91 @@ class ControlPageTests(TestCase):
         self.control.save()
         response = self.client.get(reverse("controls:control_detail", args=[self.control.pk]))
         self.assertContains(response, "read-only until it is restored")
+
+
+class FrameworkRequirementTests(TestCase):
+    """Catalogue references are unique within one framework, and mappings are one-to-one."""
+
+    def setUp(self):
+        self.iso = FrameworkRequirement.objects.create(
+            framework=FrameworkRequirement.Framework.ISO_27001,
+            reference="A.5.15",
+            title="Access is limited to people who need it",
+        )
+        self.control = make_control()
+        self.control.save()
+
+    def test_same_reference_is_allowed_in_another_framework(self):
+        other = FrameworkRequirement(
+            framework=FrameworkRequirement.Framework.NIST_CSF,
+            reference="A.5.15",
+            title="A different catalogue.",
+        )
+        other.full_clean()
+        other.save()
+
+    def test_duplicate_reference_in_one_framework_is_rejected(self):
+        duplicate = FrameworkRequirement(
+            framework=FrameworkRequirement.Framework.ISO_27001,
+            reference="A.5.15",
+            title="Another title",
+        )
+        with self.assertRaises(ValidationError):
+            duplicate.full_clean()
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            duplicate.save()
+
+    def test_mapping_is_unique_and_blocks_deletion(self):
+        ControlRequirement.objects.create(control=self.control, requirement=self.iso)
+        duplicate = ControlRequirement(control=self.control, requirement=self.iso)
+        with self.assertRaises(ValidationError):
+            duplicate.full_clean()
+        with self.assertRaises(ProtectedError):
+            self.iso.delete()
+        with self.assertRaises(ProtectedError):
+            self.control.delete()
+
+    def test_sample_requirements_cover_every_framework_and_can_be_rerun(self):
+        call_command("load_sample_controls")
+        call_command("load_sample_requirements")
+        frameworks = set(FrameworkRequirement.objects.values_list("framework", flat=True))
+        self.assertEqual(frameworks, set(FrameworkRequirement.Framework.values))
+        mfa = Control.objects.get(title="Multi-factor authentication")
+        self.assertEqual(mfa.requirement_links.count(), 3)
+
+        requirement_count = FrameworkRequirement.objects.count()
+        mapping_count = ControlRequirement.objects.count()
+        call_command("load_sample_requirements")
+        self.assertEqual(FrameworkRequirement.objects.count(), requirement_count)
+        self.assertEqual(ControlRequirement.objects.count(), mapping_count)
+
+    def test_admin_can_add_a_requirement_and_map_it(self):
+        admin_user = get_user_model().objects.create_superuser(
+            username="admin", password="test-password-123"
+        )
+        self.client.force_login(admin_user)
+        response = self.client.post(reverse("admin:controls_frameworkrequirement_add"), {
+            "framework": FrameworkRequirement.Framework.SOC_2,
+            "reference": "CC6.1",
+            "title": "Access to systems is limited",
+        })
+        self.assertEqual(response.status_code, 302)
+        requirement = FrameworkRequirement.objects.get(reference="CC6.1")
+
+        change_url = reverse("admin:controls_control_change", args=[self.control.pk])
+        response = self.client.post(change_url, {
+            "title": self.control.title,
+            "description": self.control.description,
+            "owner": self.control.owner,
+            "control_type": self.control.control_type,
+            "status": self.control.status,
+            "notes": "",
+            "requirement_links-TOTAL_FORMS": "1",
+            "requirement_links-INITIAL_FORMS": "0",
+            "requirement_links-MIN_NUM_FORMS": "0",
+            "requirement_links-MAX_NUM_FORMS": "1000",
+            "requirement_links-0-id": "",
+            "requirement_links-0-requirement": requirement.pk,
+        })
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(self.control.requirement_links.get().requirement, requirement)
