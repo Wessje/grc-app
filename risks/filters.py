@@ -33,6 +33,8 @@ SORTABLE_COLUMNS = {
     "category": ("Category", "category__name"),
     "score": ("Inherent score", "inherent_score"),
     "rating": ("Inherent rating", "inherent_score"),
+    "residual_score": ("Residual score", "residual_score"),
+    "residual_rating": ("Residual rating", "residual_score"),
     "status": ("Status", "status_order"),
 }
 DEFAULT_SORT = "id"

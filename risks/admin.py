@@ -34,6 +34,8 @@ class RiskAdmin(admin.ModelAdmin):
         "owner",
         "inherent_score",
         "inherent_rating",
+        "residual_score",
+        "residual_rating",
         "status",
         "is_archived",
     ]
@@ -43,6 +45,8 @@ class RiskAdmin(admin.ModelAdmin):
         "risk_id",
         "inherent_score",
         "inherent_rating",
+        "residual_score",
+        "residual_rating",
         "archived_at",
         "created_at",
         "updated_at",
@@ -52,6 +56,8 @@ class RiskAdmin(admin.ModelAdmin):
                            "risk_source", "date_identified"]}),
         ("Inherent risk", {"fields": ["inherent_likelihood", "inherent_impact",
                                       "inherent_score", "inherent_rating"]}),
+        ("Residual risk (after controls)", {"fields": ["residual_likelihood", "residual_impact",
+                                                       "residual_score", "residual_rating"]}),
         ("Treatment", {"fields": ["status", "response_type", "response_description"]}),
         ("Risk acceptance (only when the response type is Accept)",
          {"fields": ["accepted_by", "acceptance_date", "acceptance_expiry_date"]}),
@@ -62,6 +68,11 @@ class RiskAdmin(admin.ModelAdmin):
     def inherent_rating(self, risk):
         """Show the rating label (Low/Medium/High/Critical) for a risk."""
         return risk.inherent_rating
+
+    @admin.display(description="Residual rating")
+    def residual_rating(self, risk):
+        """Show the residual rating, or a dash when it has not been assessed."""
+        return risk.residual_rating or "—"
 
     @admin.display(description="Archived", boolean=True)
     def is_archived(self, risk):

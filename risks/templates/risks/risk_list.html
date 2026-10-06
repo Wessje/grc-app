@@ -81,6 +81,8 @@ Each rating is colour-coded and also written out, so it doesn't rely on colour a
             <td>{{ risk.category }}</td>
             <td class="number">{{ risk.inherent_score }}</td>
             <td><span class="rating rating-{{ risk.inherent_rating|lower }}">{{ risk.inherent_rating }}</span></td>
+            <td class="number">{% if risk.residual_score %}{{ risk.residual_score }}{% else %}—{% endif %}</td>
+            <td>{% if risk.residual_rating %}<span class="rating rating-{{ risk.residual_rating|lower }}">{{ risk.residual_rating }}</span>{% else %}—{% endif %}</td>
             <td class="nowrap">{{ risk.get_status_display }}</td>
         </tr>
         {% endfor %}

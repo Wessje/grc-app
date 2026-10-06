@@ -55,6 +55,18 @@ Flags expired acceptances and archived risks at the top.
         <dt>Rating</dt><dd><span class="rating rating-{{ risk.inherent_rating|lower }}">{{ risk.inherent_rating }}</span></dd>
     </dl>
 
+    <h2>Residual risk</h2>
+    {% if risk.residual_score %}
+    <dl>
+        <dt>Likelihood</dt><dd>{{ risk.get_residual_likelihood_display }}</dd>
+        <dt>Impact</dt><dd>{{ risk.get_residual_impact_display }}</dd>
+        <dt>Score</dt><dd>{{ risk.residual_score }}</dd>
+        <dt>Rating</dt><dd><span class="rating rating-{{ risk.residual_rating|lower }}">{{ risk.residual_rating }}</span></dd>
+    </dl>
+    {% else %}
+    <p class="hint">Not assessed yet. This is the score after controls. Set both residual likelihood and impact on the Edit page.</p>
+    {% endif %}
+
     <h2>Treatment</h2>
     <dl>
         <dt>Status</dt><dd>{{ risk.get_status_display }}</dd>

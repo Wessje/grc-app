@@ -132,6 +132,21 @@ class Risk(models.Model):
     # Calculated in `save`, never entered by hand.
     inherent_score = models.PositiveSmallIntegerField(editable=False, blank=True)
 
+    # After controls. Both empty until someone assesses the residual risk;
+    # filling in one requires the other. The score is calculated in `save`.
+    residual_likelihood = models.PositiveSmallIntegerField(
+        choices=LIKELIHOOD_CHOICES,
+        null=True,
+        blank=True,
+        help_text="After controls. Leave both residual scores blank until this has been assessed.",
+    )
+    residual_impact = models.PositiveSmallIntegerField(
+        choices=IMPACT_CHOICES, null=True, blank=True
+    )
+    residual_score = models.PositiveSmallIntegerField(
+        null=True, blank=True, editable=False
+    )
+
     status = models.CharField(max_length=20, choices=Status, default=Status.OPEN)
 
     response_type = models.CharField(
@@ -166,6 +181,21 @@ class Risk(models.Model):
                 condition=models.Q(inherent_impact__gte=1, inherent_impact__lte=5),
                 name="inherent_impact_1_to_5",
             ),
+            # Empty is allowed; any other value must still be on the 1–5 scale.
+            models.CheckConstraint(
+                condition=(
+                    models.Q(residual_likelihood__isnull=True)
+                    | models.Q(residual_likelihood__gte=1, residual_likelihood__lte=5)
+                ),
+                name="residual_likelihood_1_to_5_or_empty",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(residual_impact__isnull=True)
+                    | models.Q(residual_impact__gte=1, residual_impact__lte=5)
+                ),
+                name="residual_impact_1_to_5_or_empty",
+            ),
         ]
 
     def __str__(self):
@@ -177,6 +207,13 @@ class Risk(models.Model):
         if self.inherent_score is None:
             return ""
         return rating_for_score(self.inherent_score)
+
+    @property
+    def residual_rating(self):
+        """The rating label for the residual score, or blank if not assessed."""
+        if not self.residual_score:
+            return ""
+        return rating_for_score(self.residual_score)
 
     @property
     def is_acceptance_expired(self):
@@ -204,6 +241,7 @@ class Risk(models.Model):
         errors = {}
         errors.update(self._check_response_rules())
         errors.update(self._check_acceptance_rules())
+        errors.update(self._check_residual_rules())
         if errors:
             raise ValidationError(errors)
 
@@ -253,12 +291,30 @@ class Risk(models.Model):
                 errors["acceptance_expiry_date"] = message
         return errors
 
+    def _check_residual_rules(self):
+        """
+        Return errors for the residual scores.
+
+        Both may be empty (not assessed yet). If one is filled in, the other
+        is required, so a residual score is never calculated from half a pair.
+        """
+        errors = {}
+        has_likelihood = self.residual_likelihood is not None
+        has_impact = self.residual_impact is not None
+        if has_likelihood and not has_impact:
+            errors["residual_impact"] = "Record the residual impact as well as the likelihood."
+        if has_impact and not has_likelihood:
+            errors["residual_likelihood"] = "Record the residual likelihood as well as the impact."
+        return errors
+
     def save(self, *args, **kwargs):
         """
         Save the risk, recalculating its score and assigning a Risk ID.
 
-        The score is recalculated on every save, so it can never drift out of
-        sync with likelihood and impact.
+        The inherent score, and the residual score when both residual values
+        are present, are recalculated on every save, so they can never drift
+        out of sync with likelihood and impact. Residual uses the same
+        multiplication and the same rating bands as inherent risk.
 
         The Risk ID is based on the database's record number, which SQLite
         never hands out twice, so an ID is never reused. That number only
@@ -268,6 +324,12 @@ class Risk(models.Model):
         self.inherent_score = calculate_inherent_score(
             self.inherent_likelihood, self.inherent_impact
         )
+        if self.residual_likelihood and self.residual_impact:
+            self.residual_score = calculate_inherent_score(
+                self.residual_likelihood, self.residual_impact
+            )
+        else:
+            self.residual_score = None
         with transaction.atomic():
             super().save(*args, **kwargs)
             if not self.risk_id:

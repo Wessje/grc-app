@@ -873,6 +873,87 @@ class BackupTests(TransactionTestCase):
         self.assertIn("backups/", gitignore)
 
 
+class ResidualRiskTests(TestCase):
+    """Residual likelihood and impact use the same score and rating as inherent risk."""
+
+    def setUp(self):
+        self.category = RiskCategory.objects.create(name="Cyber")
+
+    def test_unassessed_residual_is_empty(self):
+        risk = make_risk(self.category)
+        self.assertEqual(validation_errors(risk), {})
+        risk.save()
+        self.assertIsNone(risk.residual_score)
+        self.assertEqual(risk.residual_rating, "")
+
+    def test_one_side_without_the_other_is_rejected(self):
+        risk = make_risk(self.category, residual_likelihood=2)
+        self.assertIn("residual_impact", validation_errors(risk))
+        risk = make_risk(self.category, residual_impact=3)
+        self.assertIn("residual_likelihood", validation_errors(risk))
+
+    def test_score_and_rating_match_the_inherent_bands(self):
+        risk = make_risk(self.category, residual_likelihood=2, residual_impact=3)
+        risk.save()
+        self.assertEqual(risk.residual_score, 6)
+        self.assertEqual(risk.residual_rating, "Medium")
+        risk.residual_likelihood = 5
+        risk.residual_impact = 5
+        risk.save()
+        risk.refresh_from_db()
+        self.assertEqual(risk.residual_score, 25)
+        self.assertEqual(risk.residual_rating, "Critical")
+
+    def test_clearing_residual_clears_the_score(self):
+        risk = make_risk(self.category, residual_likelihood=2, residual_impact=2)
+        risk.save()
+        risk.residual_likelihood = None
+        risk.residual_impact = None
+        risk.save()
+        risk.refresh_from_db()
+        self.assertIsNone(risk.residual_score)
+
+    def test_database_refuses_residual_likelihood_6(self):
+        risk = make_risk(self.category, residual_likelihood=6, residual_impact=1)
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            risk.save()
+
+    def test_form_saves_residual_and_records_history(self):
+        user = get_user_model().objects.create_superuser(username="w", password="test-password-123")
+        self.client.force_login(user)
+        risk = make_risk(self.category)
+        risk.save()
+        response = self.client.post(
+            reverse("risks:risk_edit", args=[risk.pk]),
+            risk_form_data(
+                self.category,
+                date_identified=risk.date_identified.isoformat(),
+                residual_likelihood=2,
+                residual_impact=2,
+            ),
+        )
+        self.assertRedirects(response, reverse("risks:risk_detail", args=[risk.pk]))
+        risk.refresh_from_db()
+        self.assertEqual(risk.residual_score, 4)
+        self.assertEqual(risk.residual_rating, "Low")
+        page = self.client.get(reverse("risks:risk_detail", args=[risk.pk]))
+        self.assertContains(page, "2 – Unlikely")
+        self.assertContains(page, "Low")
+        changes = {c.field_name: (c.old_value, c.new_value) for c in risk.changes.all()}
+        self.assertEqual(changes["Residual likelihood"], ("", "2 – Unlikely"))
+        self.assertEqual(changes["Residual score"], ("", "4"))
+
+    def test_register_shows_residual_rating(self):
+        user = get_user_model().objects.create_user(username="reader", password="x-Long-pw-123")
+        self.client.force_login(user)
+        make_risk(self.category, title="Assessed", residual_likelihood=4, residual_impact=4).save()
+        response = self.client.get(reverse("risks:risk_list"))
+        self.assertContains(response, "Residual score")
+        self.assertContains(response, 'class="rating rating-high"')
+        assessed = next(risk for risk in response.context["risks"] if risk.title == "Assessed")
+        self.assertEqual(assessed.residual_score, 16)
+
+
 class HeatMapTests(TestCase):
     """The heat map counts the register's risks per likelihood/impact cell."""
 

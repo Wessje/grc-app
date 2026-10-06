@@ -30,6 +30,7 @@ class RiskForm(forms.ModelForm):
         ("Risk", ["title", "description", "category", "owner", "risk_source",
                   "date_identified"]),
         ("Inherent risk", ["inherent_likelihood", "inherent_impact"]),
+        ("Residual risk (after controls)", ["residual_likelihood", "residual_impact"]),
         ("Treatment", ["status", "response_type", "response_description"]),
         ("Risk acceptance (only when the response type is Accept)",
          ["accepted_by", "acceptance_date", "acceptance_expiry_date"]),
@@ -41,6 +42,7 @@ class RiskForm(forms.ModelForm):
         fields = [
             "title", "description", "category", "owner", "risk_source",
             "date_identified", "inherent_likelihood", "inherent_impact",
+            "residual_likelihood", "residual_impact",
             "status", "response_type", "response_description",
             "accepted_by", "acceptance_date", "acceptance_expiry_date", "notes",
         ]
