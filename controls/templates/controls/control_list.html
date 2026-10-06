@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% comment %}
+The control register: controls that are not archived.
+{% endcomment %}
+
+{% block title %}Controls{% endblock %}
+
+{% block content %}
+<h1>Controls</h1>
+<p class="hint">Safeguards that reduce risk. Add or edit them in the admin screen. Archived controls are not shown.</p>
+
+{% if controls %}
+<table class="register">
+    <thead>
+        <tr>
+            <th>Control ID</th>
+            <th>Title</th>
+            <th>Owner</th>
+            <th>Type</th>
+            <th>Status</th>
+            <th>Risks addressed</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for control in controls %}
+        <tr>
+            <td class="nowrap"><a href="{% url 'controls:control_detail' control.pk %}">{{ control.control_id }}</a></td>
+            <td><a href="{% url 'controls:control_detail' control.pk %}">{{ control.title }}</a></td>
+            <td>{{ control.owner }}</td>
+            <td class="nowrap">{{ control.get_control_type_display }}</td>
+            <td class="nowrap">{{ control.get_status_display }}</td>
+            <td class="number">{{ control.risk_count }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p>No controls yet. Add them in the admin screen, or run <code>python manage.py load_sample_controls</code>.</p>
+{% endif %}
+{% endblock %}

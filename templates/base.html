@@ -17,6 +17,7 @@ Pages fill in the "title" and "content" blocks.
         {% if user.is_authenticated %}
             <nav>
                 <a href="{% url 'risks:risk_list' %}">Risk register</a>
+                <a href="{% url 'controls:control_list' %}">Controls</a>
                 <a href="{% url 'risks:archived_risk_list' %}">Archive</a>
                 {% if user.is_staff %}<a href="{% url 'admin:index' %}">Admin</a>{% endif %}
             </nav>

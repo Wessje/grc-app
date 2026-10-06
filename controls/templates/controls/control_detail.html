@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% comment %}
+Detail page for one control, including the risks it addresses and how
+effective it is for each of them.
+{% endcomment %}
+
+{% block title %}{{ control.control_id }}{% endblock %}
+
+{% block content %}
+<p><a href="{% url 'controls:control_list' %}">← Back to controls</a></p>
+
+<h1>{{ control.control_id }}: {{ control.title }}</h1>
+
+{% if control.archived_at %}
+    <p class="notice">Archived on {{ control.archived_at }}. This control is read-only until it is restored.</p>
+{% endif %}
+
+<section class="details">
+    <h2>Control</h2>
+    <dl>
+        <dt>Description</dt><dd class="multiline">{{ control.description }}</dd>
+        <dt>Owner</dt><dd>{{ control.owner }}</dd>
+        <dt>Type</dt><dd>{{ control.get_control_type_display }}</dd>
+        <dt>Status</dt><dd>{{ control.get_status_display }}</dd>
+        <dt>Notes</dt><dd class="multiline">{{ control.notes|default:"—" }}</dd>
+        <dt>Created</dt><dd>{{ control.created_at }}</dd>
+        <dt>Last updated</dt><dd>{{ control.updated_at }}</dd>
+    </dl>
+</section>
+
+<section>
+    <h2>Risks addressed</h2>
+    {% if risk_links %}
+    <table class="register">
+        <thead>
+            <tr>
+                <th>Risk ID</th>
+                <th>Title</th>
+                <th>Inherent rating</th>
+                <th>Status</th>
+                <th>Effectiveness for this risk</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for link in risk_links %}
+            <tr>
+                <td class="nowrap"><a href="{% url 'risks:risk_detail' link.risk.pk %}">{{ link.risk.risk_id }}</a></td>
+                <td><a href="{% url 'risks:risk_detail' link.risk.pk %}">{{ link.risk.title }}</a></td>
+                <td><span class="rating rating-{{ link.risk.inherent_rating|lower }}">{{ link.risk.inherent_rating }}</span></td>
+                <td class="nowrap">{{ link.risk.get_status_display }}</td>
+                <td>{{ link.get_effectiveness_display }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="hint">This control is not linked to any risk yet. Link it from the risk's Edit page.</p>
+    {% endif %}
+</section>
+{% endblock %}

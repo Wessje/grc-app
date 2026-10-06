@@ -87,7 +87,7 @@ Flags expired acceptances and archived risks at the top.
         <tbody>
             {% for link in control_links %}
             <tr>
-                <td class="nowrap">{{ link.control.control_id }}</td>
+                <td class="nowrap"><a href="{% url 'controls:control_detail' link.control.pk %}">{{ link.control.control_id }}</a></td>
                 <td>{{ link.control.title }}</td>
                 <td>{{ link.control.get_control_type_display }}</td>
                 <td>{{ link.control.get_status_display }}</td>

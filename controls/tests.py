@@ -309,3 +309,63 @@ class SampleControlTests(TestCase):
         call_command("load_sample_controls")
         self.assertEqual(Control.objects.count(), control_count)
         self.assertEqual(RiskControl.objects.count(), link_count)
+
+
+class ControlPageTests(TestCase):
+    """The control list and detail pages."""
+
+    def setUp(self):
+        user = get_user_model().objects.create_user(username="w", password="test-password-123")
+        self.client.force_login(user)
+        call_command("load_sample_risks")
+        call_command("load_sample_controls")
+        self.control = Control.objects.get(title="Multi-factor authentication")
+
+    def test_logged_out_visitors_are_sent_to_login(self):
+        self.client.logout()
+        for url in [
+            reverse("controls:control_list"),
+            reverse("controls:control_detail", args=[self.control.pk]),
+        ]:
+            with self.subTest(url):
+                response = self.client.get(url)
+                self.assertRedirects(response, f"{reverse('login')}?next={url}")
+
+    def test_list_shows_active_controls_and_risk_counts(self):
+        archived = make_control(title="Old control", archived_at=timezone.now())
+        archived.save()
+        response = self.client.get(reverse("controls:control_list"))
+        self.assertContains(response, self.control.control_id)
+        self.assertContains(response, "Multi-factor authentication")
+        self.assertContains(response, "Preventive")
+        self.assertContains(response, "In place")
+        self.assertNotContains(response, "Old control")
+        shown = {control.title: control.risk_count for control in response.context["controls"]}
+        self.assertEqual(shown["Multi-factor authentication"], 1)
+        self.assertEqual(shown["Security awareness training"], 1)
+        self.assertNotIn("Old control", shown)
+
+    def test_detail_shows_the_control_and_the_risks_it_addresses(self):
+        response = self.client.get(reverse("controls:control_detail", args=[self.control.pk]))
+        self.assertContains(response, self.control.control_id)
+        self.assertContains(response, self.control.description)
+        self.assertContains(response, "IT security officer")
+        self.assertContains(response, "Phishing leads to stolen staff credentials")
+        self.assertContains(response, "Effective")
+        self.assertContains(response, "High")
+
+    def test_risk_page_links_to_the_control(self):
+        risk = Risk.objects.get(title="Phishing leads to stolen staff credentials")
+        response = self.client.get(reverse("risks:risk_detail", args=[risk.pk]))
+        detail_url = reverse("controls:control_detail", args=[self.control.pk])
+        self.assertContains(response, f'href="{detail_url}"')
+
+    def test_unknown_control_is_not_found(self):
+        response = self.client.get(reverse("controls:control_detail", args=[9999]))
+        self.assertEqual(response.status_code, 404)
+
+    def test_archived_control_can_still_be_opened(self):
+        self.control.archived_at = timezone.now()
+        self.control.save()
+        response = self.client.get(reverse("controls:control_detail", args=[self.control.pk]))
+        self.assertContains(response, "read-only until it is restored")
