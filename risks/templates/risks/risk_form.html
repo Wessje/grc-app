@@ -15,7 +15,7 @@ Errors from the validation rules are shown next to the field they concern.
     <h1>New risk</h1>
 {% endif %}
 
-{% if form.errors %}
+{% if form.errors or link_formset.total_error_count %}
     <p class="notice flag-notice">Please correct the errors below.</p>
 {% endif %}
 {{ form.non_field_errors }}
@@ -37,6 +37,30 @@ Errors from the validation rules are shown next to the field they concern.
             {% endfor %}
         </fieldset>
     {% endfor %}
+    <fieldset>
+        <legend>Controls addressing this risk</legend>
+        <p class="hint">Choose a control and how effective it is for this risk. The same control can be rated differently for another risk. Leave the spare row empty if you have nothing to add.</p>
+        {{ link_formset.management_form }}
+        {% for error in link_formset.non_form_errors %}<p class="error">{{ error }}</p>{% endfor %}
+        {% for link_form in link_formset %}
+            {{ link_form.id }}
+            <div class="link-row{% if link_form.errors %} has-error{% endif %}">
+                <div>
+                    <label for="{{ link_form.control.id_for_label }}">Control</label>
+                    {{ link_form.control }}
+                    {% for error in link_form.control.errors %}<p class="error">{{ error }}</p>{% endfor %}
+                </div>
+                <div>
+                    <label for="{{ link_form.effectiveness.id_for_label }}">Effectiveness for this risk</label>
+                    {{ link_form.effectiveness }}
+                    {% for error in link_form.effectiveness.errors %}<p class="error">{{ error }}</p>{% endfor %}
+                </div>
+                {% if link_form.instance.pk %}
+                    <label class="remove-link">{{ link_form.DELETE }} Remove</label>
+                {% endif %}
+            </div>
+        {% endfor %}
+    </fieldset>
     <p class="hint"><span class="required">*</span> required. The score and rating are calculated automatically.</p>
     <button type="submit" class="button">{% if risk %}Save changes{% else %}Create risk{% endif %}</button>
 </form>

@@ -383,6 +383,30 @@ table.register .nowrap {
     color: #c53030;
 }
 
+/* One control link: control, effectiveness, and an optional Remove box. */
+.link-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 16px;
+    margin: 12px 0;
+}
+
+.link-row label {
+    display: block;
+    font-weight: bold;
+}
+
+.link-row select {
+    min-width: 280px;
+    padding: 6px;
+    font: inherit;
+}
+
+.remove-link {
+    font-weight: normal;
+}
+
 /* --- Login page --- */
 
 .login {

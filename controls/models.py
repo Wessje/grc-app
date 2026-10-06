@@ -1,10 +1,9 @@
 """
 The control register: one row per safeguard that reduces risk (for example
-MFA or backups).
+MFA or backups), plus the links from those controls to the risks they address.
 
-Links to the risks a control addresses, and residual risk, are added in later
-steps. This file is the central definition of a control, so the admin screen
-and later forms enforce the same rules.
+Residual risk is added in a later step. This file is the central definition
+of a control, so the admin screen and our own forms enforce the same rules.
 """
 
 from django.db import models, transaction
@@ -61,3 +60,38 @@ class Control(models.Model):
             if not self.control_id:
                 self.control_id = f"CTRL-{self.pk:04d}"
                 super().save(update_fields=["control_id"])
+
+
+class RiskControl(models.Model):
+    """
+    One link: this control addresses this risk, with an effectiveness rating.
+
+    The rating is about this pairing only. The same control can be effective
+    for one risk and only partly effective for another. The link belongs to
+    the controls module; the risk table itself is unchanged. A risk or control
+    that still has a link cannot be deleted.
+    """
+
+    class Effectiveness(models.TextChoices):
+        EFFECTIVE = "effective", "Effective"
+        PARTIAL = "partial", "Partially effective"
+        INEFFECTIVE = "ineffective", "Ineffective"
+
+    risk = models.ForeignKey(
+        "risks.Risk", on_delete=models.PROTECT, related_name="control_links"
+    )
+    control = models.ForeignKey(
+        Control, on_delete=models.PROTECT, related_name="risk_links"
+    )
+    effectiveness = models.CharField(max_length=20, choices=Effectiveness)
+
+    class Meta:
+        ordering = ["control__control_id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["risk", "control"], name="one_link_per_risk_and_control"
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.control} → {self.risk} ({self.get_effectiveness_display()})"

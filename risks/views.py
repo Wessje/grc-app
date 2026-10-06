@@ -13,6 +13,8 @@ from django.core.exceptions import PermissionDenied
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
+from controls.forms import RiskControlLinkFormSet
+from controls.links import record_control_link_changes, snapshot_control_links
 from risks.filters import (
     RegisterFilterForm,
     column_headings,
@@ -56,7 +58,12 @@ def risk_detail(request, pk):
     """
     risk = get_object_or_404(Risk.objects.select_related("category"), pk=pk)
     changes = risk.changes.select_related("changed_by")
-    return render(request, "risks/risk_detail.html", {"risk": risk, "changes": changes})
+    control_links = risk.control_links.select_related("control")
+    return render(request, "risks/risk_detail.html", {
+        "risk": risk,
+        "changes": changes,
+        "control_links": control_links,
+    })
 
 
 @permission_required("risks.add_risk", raise_exception=True)
@@ -68,16 +75,27 @@ def risk_create(request):
     when submitted). Output: the form again with error messages, or – on
     success – a redirect to the new risk's detail page.
     """
+    risk = Risk()
     if request.method == "POST":
         form = RiskForm(request.POST)
-        if form.is_valid():
+        link_formset = RiskControlLinkFormSet(request.POST, instance=risk)
+        if form.is_valid() and link_formset.is_valid():
             risk = form.save(commit=False)
             save_risk_with_history(risk, request.user)
+            link_formset.instance = risk
+            before = {}
+            link_formset.save()
+            record_control_link_changes(
+                risk, before, snapshot_control_links(risk), request.user
+            )
             messages.success(request, f"{risk.risk_id} created.")
             return redirect("risks:risk_detail", pk=risk.pk)
     else:
         form = RiskForm()
-    return render(request, "risks/risk_form.html", {"form": form, "risk": None})
+        link_formset = RiskControlLinkFormSet(instance=risk)
+    return render(request, "risks/risk_form.html", {
+        "form": form, "risk": None, "link_formset": link_formset,
+    })
 
 
 @permission_required("risks.change_risk", raise_exception=True)
@@ -94,13 +112,22 @@ def risk_edit(request, pk):
         raise PermissionDenied("Archived risks are read-only. Restore the risk to edit it.")
     if request.method == "POST":
         form = RiskForm(request.POST, instance=risk)
-        if form.is_valid():
+        link_formset = RiskControlLinkFormSet(request.POST, instance=risk)
+        if form.is_valid() and link_formset.is_valid():
+            before = snapshot_control_links(risk)
             save_risk_with_history(form.save(commit=False), request.user)
+            link_formset.save()
+            record_control_link_changes(
+                risk, before, snapshot_control_links(risk), request.user
+            )
             messages.success(request, f"{risk.risk_id} updated.")
             return redirect("risks:risk_detail", pk=risk.pk)
     else:
         form = RiskForm(instance=risk)
-    return render(request, "risks/risk_form.html", {"form": form, "risk": risk})
+        link_formset = RiskControlLinkFormSet(instance=risk)
+    return render(request, "risks/risk_form.html", {
+        "form": form, "risk": risk, "link_formset": link_formset,
+    })
 
 
 def archived_risk_list(request):

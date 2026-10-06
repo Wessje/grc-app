@@ -7,11 +7,15 @@ Run with: python manage.py test
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
+from django.core.management import call_command
+from django.db import IntegrityError, transaction
+from django.db.models import ProtectedError
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from controls.models import Control
+from controls.models import Control, RiskControl
+from risks.models import Risk, RiskCategory, RiskChange
 
 
 def make_control(**overrides):
@@ -133,3 +137,175 @@ class ControlAdminTests(TestCase):
         response = self.client.post(reverse("admin:controls_control_delete", args=[control.pk]))
         self.assertEqual(response.status_code, 403)
         self.assertTrue(Control.objects.filter(pk=control.pk).exists())
+
+
+def make_risk_for_links():
+    """Create and save one risk that control links can point at. Output: the risk."""
+    category = RiskCategory.objects.create(name="Cyber")
+    risk = Risk(
+        title="Phishing leads to stolen staff credentials",
+        description="Made-up test risk.",
+        category=category,
+        owner="IT security officer",
+        risk_source="Email",
+        inherent_likelihood=4,
+        inherent_impact=4,
+    )
+    risk.save()
+    return risk
+
+
+class RiskControlLinkTests(TestCase):
+    """A control can address a risk, once, with an effectiveness rating."""
+
+    def setUp(self):
+        self.risk = make_risk_for_links()
+        self.control = make_control()
+        self.control.save()
+        self.other = make_control(title="Offline backups", control_type=Control.ControlType.CORRECTIVE)
+        self.other.save()
+
+    def test_link_is_saved_with_its_effectiveness(self):
+        link = RiskControl(
+            risk=self.risk, control=self.control,
+            effectiveness=RiskControl.Effectiveness.EFFECTIVE,
+        )
+        link.full_clean()
+        link.save()
+        self.assertEqual(self.risk.control_links.get().effectiveness, "effective")
+
+    def test_same_control_cannot_be_linked_twice(self):
+        RiskControl.objects.create(
+            risk=self.risk, control=self.control,
+            effectiveness=RiskControl.Effectiveness.EFFECTIVE,
+        )
+        duplicate = RiskControl(
+            risk=self.risk, control=self.control,
+            effectiveness=RiskControl.Effectiveness.PARTIAL,
+        )
+        with self.assertRaises(ValidationError):
+            duplicate.full_clean()
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            duplicate.save()
+
+    def test_linked_risk_and_control_cannot_be_deleted(self):
+        RiskControl.objects.create(
+            risk=self.risk, control=self.control,
+            effectiveness=RiskControl.Effectiveness.PARTIAL,
+        )
+        with self.assertRaises(ProtectedError):
+            self.risk.delete()
+        with self.assertRaises(ProtectedError):
+            self.control.delete()
+
+
+class ControlLinkFormTests(TestCase):
+    """The risk form saves control links and records them in the history."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_superuser(
+            username="w", password="test-password-123"
+        )
+        self.client.force_login(self.user)
+        self.risk = make_risk_for_links()
+        self.control = make_control()
+        self.control.save()
+
+    def edit_data(self, **overrides):
+        """Return a valid edit-form submission, plus any control-link fields."""
+        data = {
+            "title": self.risk.title,
+            "description": self.risk.description,
+            "category": self.risk.category_id,
+            "owner": self.risk.owner,
+            "risk_source": self.risk.risk_source,
+            "date_identified": self.risk.date_identified.isoformat(),
+            "inherent_likelihood": 4,
+            "inherent_impact": 4,
+            "status": self.risk.status,
+            "control_links-TOTAL_FORMS": "1",
+            "control_links-INITIAL_FORMS": "0",
+            "control_links-MIN_NUM_FORMS": "0",
+            "control_links-MAX_NUM_FORMS": "1000",
+            "control_links-0-id": "",
+            "control_links-0-control": "",
+            "control_links-0-effectiveness": "",
+        }
+        data.update(overrides)
+        return data
+
+    def test_linking_a_control_shows_it_and_records_history(self):
+        response = self.client.post(
+            reverse("risks:risk_edit", args=[self.risk.pk]),
+            self.edit_data(**{
+                "control_links-0-control": self.control.pk,
+                "control_links-0-effectiveness": RiskControl.Effectiveness.EFFECTIVE,
+            }),
+        )
+        self.assertRedirects(response, reverse("risks:risk_detail", args=[self.risk.pk]))
+        link = self.risk.control_links.get()
+        self.assertEqual(link.effectiveness, RiskControl.Effectiveness.EFFECTIVE)
+
+        page = self.client.get(reverse("risks:risk_detail", args=[self.risk.pk]))
+        self.assertContains(page, self.control.control_id)
+        self.assertContains(page, "Effective")
+        change = RiskChange.objects.get(risk=self.risk)
+        self.assertIn(self.control.control_id, change.field_name)
+        self.assertEqual(change.old_value, "")
+        self.assertEqual(change.new_value, "Effective")
+        self.assertEqual(change.changed_by, self.user)
+
+    def test_control_without_effectiveness_is_rejected(self):
+        response = self.client.post(
+            reverse("risks:risk_edit", args=[self.risk.pk]),
+            self.edit_data(**{"control_links-0-control": self.control.pk}),
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Record how effective this control is")
+        self.assertFalse(self.risk.control_links.exists())
+
+    def test_duplicate_rows_are_rejected(self):
+        data = self.edit_data()
+        data.update({
+            "control_links-TOTAL_FORMS": "2",
+            "control_links-1-id": "",
+            "control_links-1-control": self.control.pk,
+            "control_links-1-effectiveness": RiskControl.Effectiveness.PARTIAL,
+            "control_links-0-control": self.control.pk,
+            "control_links-0-effectiveness": RiskControl.Effectiveness.EFFECTIVE,
+        })
+        response = self.client.post(reverse("risks:risk_edit", args=[self.risk.pk]), data)
+        self.assertContains(response, "Please correct the duplicate data for control.")
+        self.assertFalse(self.risk.control_links.exists())
+
+    def test_blank_spare_row_is_ignored(self):
+        response = self.client.post(
+            reverse("risks:risk_edit", args=[self.risk.pk]), self.edit_data()
+        )
+        self.assertRedirects(response, reverse("risks:risk_detail", args=[self.risk.pk]))
+        self.assertFalse(self.risk.control_links.exists())
+        self.assertFalse(RiskChange.objects.filter(risk=self.risk).exists())
+
+
+class SampleControlTests(TestCase):
+    """load_sample_controls covers every type and status, and is safe to repeat."""
+
+    def test_loads_controls_and_links_without_duplicates(self):
+        call_command("load_sample_risks")
+        call_command("load_sample_controls")
+        self.assertEqual(set(Control.objects.values_list("control_type", flat=True)),
+                         set(Control.ControlType.values))
+        self.assertEqual(set(Control.objects.values_list("status", flat=True)),
+                         set(Control.Status.values))
+        self.assertEqual(
+            set(RiskControl.objects.values_list("effectiveness", flat=True)),
+            set(RiskControl.Effectiveness.values),
+        )
+        phishing = Risk.objects.get(title="Phishing leads to stolen staff credentials")
+        self.assertEqual(phishing.control_links.count(), 2)
+
+        control_count = Control.objects.count()
+        link_count = RiskControl.objects.count()
+        call_command("load_sample_controls")
+        self.assertEqual(Control.objects.count(), control_count)
+        self.assertEqual(RiskControl.objects.count(), link_count)

@@ -75,6 +75,31 @@ Flags expired acceptances and archived risks at the top.
     </dl>
     {% endif %}
 
+    <h2>Controls</h2>
+    {% if control_links %}
+    <table class="register">
+        <thead>
+            <tr>
+                <th>Control ID</th><th>Title</th><th>Type</th><th>Status</th>
+                <th>Effectiveness for this risk</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for link in control_links %}
+            <tr>
+                <td class="nowrap">{{ link.control.control_id }}</td>
+                <td>{{ link.control.title }}</td>
+                <td>{{ link.control.get_control_type_display }}</td>
+                <td>{{ link.control.get_status_display }}</td>
+                <td>{{ link.get_effectiveness_display }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="hint">No controls linked yet.{% if perms.risks.change_risk and not risk.archived_at %} Add them with Edit.{% endif %}</p>
+    {% endif %}
+
     <h2>Other</h2>
     <dl>
         <dt>Notes</dt><dd class="multiline">{{ risk.notes|default:"—" }}</dd>

@@ -8,6 +8,8 @@ Every save is recorded in the change history (see risks/history.py).
 
 from django.contrib import admin
 
+from controls.admin import RiskControlInline
+from controls.links import record_control_link_changes, snapshot_control_links
 from risks.history import save_risk_with_history
 from risks.models import Risk, RiskCategory
 
@@ -24,6 +26,7 @@ class RiskCategoryAdmin(admin.ModelAdmin):
 class RiskAdmin(admin.ModelAdmin):
     """Admin pages for risks."""
 
+    inlines = [RiskControlInline]
     list_display = [
         "risk_id",
         "title",
@@ -73,6 +76,18 @@ class RiskAdmin(admin.ModelAdmin):
         audit trail too.
         """
         save_risk_with_history(risk, request.user)
+
+    def save_related(self, request, form, formsets, change):
+        """
+        Save the control links and record what changed in the risk's history.
+
+        The snapshot is taken before the links are saved, then compared with
+        the links afterwards.
+        """
+        risk = form.instance
+        before = snapshot_control_links(risk)
+        super().save_related(request, form, formsets, change)
+        record_control_link_changes(risk, before, snapshot_control_links(risk), request.user)
 
     def has_change_permission(self, request, risk=None):
         """

@@ -245,6 +245,11 @@ class AdminTests(TestCase):
             "inherent_likelihood": 4,
             "inherent_impact": 5,
             "status": Risk.Status.OPEN,
+            # No control links on this form. The inline still has to be present.
+            "control_links-TOTAL_FORMS": "0",
+            "control_links-INITIAL_FORMS": "0",
+            "control_links-MIN_NUM_FORMS": "0",
+            "control_links-MAX_NUM_FORMS": "1000",
         }
         data.update(overrides)
         return data
@@ -492,6 +497,11 @@ def risk_form_data(category, **overrides):
         "inherent_likelihood": 3,
         "inherent_impact": 4,
         "status": Risk.Status.OPEN,
+        # No control links on this form. The link rows still have to be present.
+        "control_links-TOTAL_FORMS": "0",
+        "control_links-INITIAL_FORMS": "0",
+        "control_links-MIN_NUM_FORMS": "0",
+        "control_links-MAX_NUM_FORMS": "1000",
     }
     data.update(overrides)
     return data

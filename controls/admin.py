@@ -7,7 +7,7 @@ The Control ID is shown but cannot be edited. Controls cannot be deleted
 
 from django.contrib import admin
 
-from controls.models import Control
+from controls.models import Control, RiskControl
 
 
 @admin.register(Control)
@@ -48,3 +48,12 @@ class ControlAdmin(admin.ModelAdmin):
         Output: always False, which also removes the bulk "delete" action.
         """
         return False
+
+
+class RiskControlInline(admin.TabularInline):
+    """Controls linked to one risk, edited on the risk's admin page."""
+
+    model = RiskControl
+    extra = 1
+    autocomplete_fields = ["control"]
+    fields = ["control", "effectiveness"]
