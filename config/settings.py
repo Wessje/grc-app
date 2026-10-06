@@ -51,6 +51,7 @@ INSTALLED_APPS = [
     # Our own modules
     "accounts",
     "risks",
+    "controls",
 ]
 
 MIDDLEWARE = [
