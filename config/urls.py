@@ -4,6 +4,7 @@ Maps web addresses (URLs) to pages for the whole project.
 - /                 the risk register (see risks/urls.py)
 - /controls/        the control register (see controls/urls.py)
 - /assessments/     the assessment list (see assessments/urls.py)
+- /processes/       processes and solutions (see processes/urls.py)
 - /accounts/login/  login page; /accounts/logout/ logs out
 - /admin/           Django's admin screen
 """
@@ -16,6 +17,7 @@ urlpatterns = [
     path("", include("risks.urls")),
     path("controls/", include("controls.urls")),
     path("assessments/", include("assessments.urls")),
+    path("processes/", include("processes.urls")),
     # Only login and logout are enabled; Django's password-reset pages are
     # left out because they need email and would be extra public pages.
     path("accounts/login/", auth_views.LoginView.as_view(), name="login"),

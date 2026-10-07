@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% comment %}
+Detail page for one process or solution.
+{% endcomment %}
+
+{% block title %}{{ process.process_id }}{% endblock %}
+
+{% block content %}
+{% if process.archived_at %}
+    <p><a href="{% url 'processes:archived_process_list' %}">← Back to archived processes</a></p>
+{% else %}
+    <p><a href="{% url 'processes:process_list' %}">← Back to processes</a></p>
+{% endif %}
+
+<div class="page-heading">
+    <h1>{{ process.process_id }}: {{ process.name }}</h1>
+    {% if perms.processes.change_process %}
+        <div class="button-row">
+        {% if process.archived_at %}
+            <form method="post" action="{% url 'processes:process_restore' process.pk %}">
+                {% csrf_token %}
+                <button type="submit" class="button">Restore</button>
+            </form>
+        {% else %}
+            <a class="button" href="{% url 'processes:process_edit' process.pk %}">Edit</a>
+            <a class="button button-warning" href="{% url 'processes:process_archive' process.pk %}">Archive</a>
+        {% endif %}
+        </div>
+    {% endif %}
+</div>
+
+{% if process.archived_at %}
+    <p class="notice">Archived on {{ process.archived_at }}. This record is read-only until it is restored.</p>
+{% endif %}
+
+<section class="details">
+    <h2>{{ process.get_kind_display }}</h2>
+    <dl>
+        <dt>Description</dt><dd class="multiline">{{ process.description }}</dd>
+        <dt>Owner</dt><dd>{{ process.owner }}</dd>
+        <dt>Notes</dt><dd class="multiline">{{ process.notes|default:"—" }}</dd>
+        <dt>Created</dt><dd>{{ process.created_at }}</dd>
+        <dt>Last updated</dt><dd>{{ process.updated_at }}</dd>
+    </dl>
+</section>
+
+<p class="hint">Choosing the controls to assess, and connecting risks to this {{ process.get_kind_display|lower }}, comes next.</p>
+{% endblock %}

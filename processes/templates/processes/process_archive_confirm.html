@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% comment %}
+Confirmation page shown before a process or solution is archived.
+{% endcomment %}
+
+{% block title %}Archive {{ process.process_id }}{% endblock %}
+
+{% block content %}
+<h1>Archive {{ process.process_id }}: {{ process.name }}?</h1>
+
+<p>Archiving takes this {{ process.get_kind_display|lower }} out of the list. It is <strong>not deleted</strong>, and it becomes read-only until it is restored.</p>
+
+<form method="post" class="button-row">
+    {% csrf_token %}
+    <button type="submit" class="button button-warning">Archive</button>
+    <a href="{% url 'processes:process_detail' process.pk %}">Cancel</a>
+</form>
+{% endblock %}

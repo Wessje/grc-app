@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% comment %}
+Archived processes and solutions, each with a Restore button.
+{% endcomment %}
+
+{% block title %}Archived processes{% endblock %}
+
+{% block content %}
+<h1>Archived processes and solutions</h1>
+<p class="hint">These are kept and stay read-only. Restore one to bring it back. <a href="{% url 'risks:archived_risk_list' %}">Archived risks</a></p>
+
+{% if processes %}
+<table class="register">
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Name</th>
+            <th>Type</th>
+            <th>Owner</th>
+            <th>Archived</th>
+            {% if perms.processes.change_process %}<th></th>{% endif %}
+        </tr>
+    </thead>
+    <tbody>
+        {% for process in processes %}
+        <tr>
+            <td class="nowrap"><a href="{% url 'processes:process_detail' process.pk %}">{{ process.process_id }}</a></td>
+            <td><a href="{% url 'processes:process_detail' process.pk %}">{{ process.name }}</a></td>
+            <td class="nowrap">{{ process.get_kind_display }}</td>
+            <td>{{ process.owner }}</td>
+            <td class="nowrap">{{ process.archived_at|date:"j M Y" }}</td>
+            {% if perms.processes.change_process %}
+            <td>
+                <form method="post" action="{% url 'processes:process_restore' process.pk %}">
+                    {% csrf_token %}
+                    <button type="submit" class="button button-small">Restore</button>
+                </form>
+            </td>
+            {% endif %}
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p>No archived processes or solutions.</p>
+{% endif %}
+{% endblock %}
