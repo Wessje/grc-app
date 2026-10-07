@@ -102,7 +102,7 @@ Flags expired acceptances and archived risks at the top.
                 <td class="nowrap"><a href="{% url 'controls:control_detail' link.control.pk %}">{{ link.control.control_id }}</a></td>
                 <td>{{ link.control.title }}</td>
                 <td>{{ link.control.get_control_type_display }}</td>
-                <td>{{ link.control.get_status_display }}</td>
+                <td>{{ link.control.get_status_display }}{% if link.control.archived_at %} <span class="flag">Archived</span>{% endif %}</td>
                 <td>{{ link.get_effectiveness_display }}</td>
             </tr>
             {% endfor %}

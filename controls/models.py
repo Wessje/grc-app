@@ -36,7 +36,6 @@ class Control(models.Model):
     notes = models.TextField(blank=True)
 
     # Empty means active. Set when archived, cleared when restored.
-    # Archive and restore buttons are added in a later step.
     archived_at = models.DateTimeField(null=True, blank=True, editable=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

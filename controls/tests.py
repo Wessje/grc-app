@@ -14,6 +14,7 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
+from controls.forms import RiskControlLinkForm
 from controls.models import Control, ControlRequirement, FrameworkRequirement, RiskControl
 from risks.models import Risk, RiskCategory, RiskChange
 
@@ -591,3 +592,95 @@ class FrameworkRequirementTests(TestCase):
         })
         self.assertEqual(response.status_code, 302)
         self.assertEqual(self.control.requirement_links.get().requirement, requirement)
+
+
+class ControlArchiveTests(TestCase):
+    """Archiving hides a control from the register; restoring brings it back."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_superuser(
+            username="w", password="test-password-123"
+        )
+        self.client.force_login(self.user)
+        call_command("load_sample_risks")
+        self.control = make_control(title="Control to archive", status=Control.Status.IN_PLACE)
+        self.control.save()
+        self.risk = Risk.objects.get(title="Phishing leads to stolen staff credentials")
+        RiskControl.objects.create(
+            risk=self.risk,
+            control=self.control,
+            effectiveness=RiskControl.Effectiveness.EFFECTIVE,
+        )
+        self.archive_url = reverse("controls:control_archive", args=[self.control.pk])
+        self.restore_url = reverse("controls:control_restore", args=[self.control.pk])
+
+    def test_confirmation_page_does_not_archive_yet(self):
+        response = self.client.get(self.archive_url)
+        self.assertContains(response, "Archive control")
+        self.assertContains(response, "not deleted")
+        self.control.refresh_from_db()
+        self.assertIsNone(self.control.archived_at)
+
+    def test_archive_hides_from_register_and_keeps_the_link(self):
+        self.assertContains(self.client.get(reverse("controls:control_list")), "Control to archive")
+        response = self.client.post(self.archive_url)
+        self.assertRedirects(response, reverse("controls:control_list"))
+        self.control.refresh_from_db()
+        self.assertIsNotNone(self.control.archived_at)
+        self.assertEqual(self.control.status, Control.Status.IN_PLACE)
+        self.assertEqual(self.control.risk_links.count(), 1)
+        self.assertNotContains(self.client.get(reverse("controls:control_list")), "Control to archive")
+        self.assertContains(
+            self.client.get(reverse("controls:archived_control_list")), "Control to archive"
+        )
+        risk_page = self.client.get(reverse("risks:risk_detail", args=[self.risk.pk]))
+        self.assertContains(risk_page, "Control to archive")
+        self.assertContains(risk_page, "Archived")
+
+    def test_restore_brings_the_control_back(self):
+        self.client.post(self.archive_url)
+        response = self.client.post(self.restore_url, follow=True)
+        self.assertRedirects(response, reverse("controls:control_detail", args=[self.control.pk]))
+        self.assertContains(response, "restored to the register")
+        self.control.refresh_from_db()
+        self.assertIsNone(self.control.archived_at)
+        self.assertNotContains(
+            self.client.get(reverse("controls:archived_control_list")), "Control to archive"
+        )
+        self.assertContains(self.client.get(reverse("controls:control_list")), "Control to archive")
+
+    def test_archived_detail_shows_restore_not_edit(self):
+        self.client.post(self.archive_url)
+        response = self.client.get(reverse("controls:control_detail", args=[self.control.pk]))
+        self.assertContains(response, "read-only until it is restored")
+        self.assertContains(response, ">Restore</button>")
+        self.assertNotContains(response, ">Edit</a>")
+        self.assertContains(response, "Back to archived controls")
+
+    def test_restore_only_accepts_form_submissions(self):
+        self.client.post(self.archive_url)
+        self.assertEqual(self.client.get(self.restore_url).status_code, 405)
+        self.control.refresh_from_db()
+        self.assertIsNotNone(self.control.archived_at)
+
+    def test_users_without_permission_cannot_archive_or_restore(self):
+        reader = get_user_model().objects.create_user(username="reader", password="x-Long-pw-123")
+        self.client.force_login(reader)
+        self.assertEqual(self.client.post(self.archive_url).status_code, 403)
+        self.control.refresh_from_db()
+        self.assertIsNone(self.control.archived_at)
+
+        self.client.force_login(self.user)
+        self.client.post(self.archive_url)
+        self.client.force_login(reader)
+        self.assertEqual(self.client.post(self.restore_url).status_code, 403)
+        archive_page = self.client.get(reverse("controls:archived_control_list"))
+        self.assertContains(archive_page, "Control to archive")
+        self.assertNotContains(archive_page, ">Restore</button>")
+
+    def test_risk_form_cannot_newly_link_an_archived_control(self):
+        self.client.post(self.archive_url)
+        self.control.refresh_from_db()
+        self.assertNotIn(self.control, RiskControlLinkForm().fields["control"].queryset)
+        existing = RiskControlLinkForm(instance=self.control.risk_links.get())
+        self.assertIn(self.control, existing.fields["control"].queryset)

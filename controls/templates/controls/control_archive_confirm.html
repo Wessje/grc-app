@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% comment %}
+Confirmation page shown before a control is archived.
+{% endcomment %}
+
+{% block title %}Archive {{ control.control_id }}{% endblock %}
+
+{% block content %}
+<h1>Archive {{ control.control_id }}: {{ control.title }}?</h1>
+
+<p>Archiving takes this control out of the register. It is <strong>not deleted</strong>:</p>
+<ul>
+    <li>it stays on the Archived controls page, with its fields, risk links and framework mappings;</li>
+    <li>it becomes read-only until it is restored;</li>
+    <li>its status ({{ control.get_status_display }}) is kept.</li>
+</ul>
+
+<form method="post" class="button-row">
+    {% csrf_token %}
+    <button type="submit" class="button button-warning">Archive control</button>
+    <a href="{% url 'controls:control_detail' control.pk %}">Cancel</a>
+</form>
+{% endblock %}

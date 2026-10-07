@@ -10,7 +10,7 @@ The control register: controls that are not archived.
     <h1>Controls</h1>
     {% if perms.controls.add_control %}<a class="button" href="{% url 'controls:control_create' %}">New control</a>{% endif %}
 </div>
-<p class="hint">Safeguards that reduce risk. Archived controls are not shown.</p>
+<p class="hint">Safeguards that reduce risk. Archived controls are not shown. <a href="{% url 'controls:archived_control_list' %}">Archived controls</a></p>
 
 <form method="get" class="filter-bar">
     <label>Framework {{ filter_form.framework }}</label>

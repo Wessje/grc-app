@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% comment %}
+Archived controls, each with a Restore button for people who may change controls.
+{% endcomment %}
+
+{% block title %}Archived controls{% endblock %}
+
+{% block content %}
+<h1>Archived controls</h1>
+<p class="hint">Archived controls are kept and stay read-only. Restore a control to bring it back into the register. <a href="{% url 'risks:archived_risk_list' %}">Archived risks</a></p>
+
+{% if controls %}
+<table class="register">
+    <thead>
+        <tr>
+            <th>Control ID</th>
+            <th>Title</th>
+            <th>Owner</th>
+            <th>Type</th>
+            <th>Status</th>
+            <th>Archived</th>
+            {% if perms.controls.change_control %}<th></th>{% endif %}
+        </tr>
+    </thead>
+    <tbody>
+        {% for control in controls %}
+        <tr>
+            <td class="nowrap"><a href="{% url 'controls:control_detail' control.pk %}">{{ control.control_id }}</a></td>
+            <td><a href="{% url 'controls:control_detail' control.pk %}">{{ control.title }}</a></td>
+            <td>{{ control.owner }}</td>
+            <td class="nowrap">{{ control.get_control_type_display }}</td>
+            <td class="nowrap">{{ control.get_status_display }}</td>
+            <td class="nowrap">{{ control.archived_at|date:"j M Y" }}</td>
+            {% if perms.controls.change_control %}
+            <td>
+                <form method="post" action="{% url 'controls:control_restore' control.pk %}">
+                    {% csrf_token %}
+                    <button type="submit" class="button button-small">Restore</button>
+                </form>
+            </td>
+            {% endif %}
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p>No archived controls.</p>
+{% endif %}
+{% endblock %}

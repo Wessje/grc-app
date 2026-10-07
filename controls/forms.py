@@ -8,6 +8,7 @@ control cannot be linked twice.
 """
 
 from django import forms
+from django.db.models import Q
 from django.forms import inlineformset_factory
 
 from controls.models import Control, RiskControl
@@ -56,6 +57,13 @@ class RiskControlLinkForm(forms.ModelForm):
         # effectiveness; that is checked in `clean`.
         self.fields["control"].required = False
         self.fields["effectiveness"].required = False
+        # A new row can only pick an active control. A row that already
+        # points at an archived control keeps that choice, so editing the
+        # risk does not drop the link.
+        allowed = Q(archived_at__isnull=True)
+        if self.instance.pk and self.instance.control_id:
+            allowed = allowed | Q(pk=self.instance.control_id)
+        self.fields["control"].queryset = Control.objects.filter(allowed)
 
     def clean(self):
         """Require both fields once either of them is filled in."""

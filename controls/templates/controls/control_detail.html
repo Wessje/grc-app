@@ -7,12 +7,26 @@ framework requirements it is mapped to.
 {% block title %}{{ control.control_id }}{% endblock %}
 
 {% block content %}
-<p><a href="{% url 'controls:control_list' %}">← Back to controls</a></p>
+{% if control.archived_at %}
+    <p><a href="{% url 'controls:archived_control_list' %}">← Back to archived controls</a></p>
+{% else %}
+    <p><a href="{% url 'controls:control_list' %}">← Back to controls</a></p>
+{% endif %}
 
 <div class="page-heading">
     <h1>{{ control.control_id }}: {{ control.title }}</h1>
-    {% if perms.controls.change_control and not control.archived_at %}
-        <a class="button" href="{% url 'controls:control_edit' control.pk %}">Edit</a>
+    {% if perms.controls.change_control %}
+        <div class="button-row">
+        {% if control.archived_at %}
+            <form method="post" action="{% url 'controls:control_restore' control.pk %}">
+                {% csrf_token %}
+                <button type="submit" class="button">Restore</button>
+            </form>
+        {% else %}
+            <a class="button" href="{% url 'controls:control_edit' control.pk %}">Edit</a>
+            <a class="button button-warning" href="{% url 'controls:control_archive' control.pk %}">Archive</a>
+        {% endif %}
+        </div>
     {% endif %}
 </div>
 

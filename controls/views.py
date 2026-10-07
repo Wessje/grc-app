@@ -4,8 +4,8 @@ and returns the HTML page to show.
 
 Login is required for every page; this is enforced project-wide by
 LoginRequiredMiddleware in config/settings.py. Creating a control needs the
-"add control" permission, and editing one needs "change control". Viewing
-the list and a control's page needs only a login.
+"add control" permission. Editing, archiving and restoring need "change
+control". Viewing the lists and a control's page needs only a login.
 """
 
 from django.contrib import messages
@@ -13,6 +13,8 @@ from django.contrib.auth.decorators import permission_required
 from django.core.exceptions import PermissionDenied
 from django.db.models import Count
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
+from django.views.decorators.http import require_POST
 
 from controls.filters import ControlFilterForm, selected_framework
 from controls.forms import ControlForm
@@ -104,3 +106,76 @@ def control_edit(request, pk):
     else:
         form = ControlForm(instance=control)
     return render(request, "controls/control_form.html", {"form": form, "control": control})
+
+
+def archive_control(control):
+    """
+    Archive a control (take it out of the register without deleting it).
+
+    Input: the control. Output: nothing. Sets "Archived at" to now. Does
+    nothing if the control is already archived. Its status and its links to
+    risks and framework requirements are kept.
+    """
+    if control.archived_at is not None:
+        return
+    control.archived_at = timezone.now()
+    control.save()
+
+
+def restore_control(control):
+    """
+    Restore an archived control to the register.
+
+    Input: the control. Output: nothing. Clears "Archived at". Does nothing
+    if the control is not archived.
+    """
+    if control.archived_at is None:
+        return
+    control.archived_at = None
+    control.save()
+
+
+def archived_control_list(request):
+    """
+    Show archived controls, most recently archived first.
+
+    Input: the web request. Output: the archive page.
+    """
+    controls = Control.objects.filter(archived_at__isnull=False).order_by("-archived_at")
+    return render(request, "controls/archived_control_list.html", {"controls": controls})
+
+
+@permission_required("controls.change_control", raise_exception=True)
+def control_archive(request, pk):
+    """
+    Ask for confirmation, then archive a control.
+
+    Inputs: the web request and the control's record number.
+    Output: the confirmation page (first visit), or – after confirming – a
+    redirect to the register. An already archived control goes to its detail page.
+    """
+    control = get_object_or_404(Control, pk=pk)
+    if control.archived_at is not None:
+        messages.info(request, f"{control.control_id} is already archived.")
+        return redirect("controls:control_detail", pk=control.pk)
+    if request.method == "POST":
+        archive_control(control)
+        messages.success(request, f"{control.control_id} archived. Find it under Archived controls.")
+        return redirect("controls:control_list")
+    return render(request, "controls/control_archive_confirm.html", {"control": control})
+
+
+@require_POST
+@permission_required("controls.change_control", raise_exception=True)
+def control_restore(request, pk):
+    """
+    Restore an archived control to the register.
+
+    Inputs: the web request (must be a form submission, not a link) and the
+    control's record number. Output: a redirect to the control's detail page.
+    """
+    control = get_object_or_404(Control, pk=pk)
+    if control.archived_at is not None:
+        restore_control(control)
+        messages.success(request, f"{control.control_id} restored to the register.")
+    return redirect("controls:control_detail", pk=control.pk)
