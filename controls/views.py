@@ -3,14 +3,19 @@ Logic for the control register pages. Each function receives the web request
 and returns the HTML page to show.
 
 Login is required for every page; this is enforced project-wide by
-LoginRequiredMiddleware in config/settings.py. Controls are still created
-and edited in the admin screen.
+LoginRequiredMiddleware in config/settings.py. Creating a control needs the
+"add control" permission, and editing one needs "change control". Viewing
+the list and a control's page needs only a login.
 """
 
+from django.contrib import messages
+from django.contrib.auth.decorators import permission_required
+from django.core.exceptions import PermissionDenied
 from django.db.models import Count
-from django.shortcuts import get_object_or_404, render
+from django.shortcuts import get_object_or_404, redirect, render
 
 from controls.filters import ControlFilterForm, selected_framework
+from controls.forms import ControlForm
 from controls.models import Control
 
 
@@ -53,3 +58,49 @@ def control_detail(request, pk):
         "risk_links": risk_links,
         "requirement_links": requirement_links,
     })
+
+
+@permission_required("controls.add_control", raise_exception=True)
+def control_create(request):
+    """
+    Show the "New control" form, and save the control once it passes validation.
+
+    Input: the web request (a blank form on first visit; the filled-in form
+    when submitted). Output: the form again with error messages, or – on
+    success – a redirect to the new control's detail page. The Control ID is
+    assigned automatically on save.
+    """
+    if request.method == "POST":
+        form = ControlForm(request.POST)
+        if form.is_valid():
+            control = form.save()
+            messages.success(request, f"{control.control_id} created.")
+            return redirect("controls:control_detail", pk=control.pk)
+    else:
+        form = ControlForm()
+    return render(request, "controls/control_form.html", {"form": form, "control": None})
+
+
+@permission_required("controls.change_control", raise_exception=True)
+def control_edit(request, pk):
+    """
+    Show the edit form for a control, and save the changes once they pass validation.
+
+    Inputs: the web request and the control's record number.
+    Output: the form again with error messages, or – on success – a redirect
+    to the detail page. Archived controls are read-only, so editing them is refused.
+    """
+    control = get_object_or_404(Control, pk=pk)
+    if control.archived_at is not None:
+        raise PermissionDenied(
+            "Archived controls are read-only. Restore the control to edit it."
+        )
+    if request.method == "POST":
+        form = ControlForm(request.POST, instance=control)
+        if form.is_valid():
+            form.save()
+            messages.success(request, f"{control.control_id} updated.")
+            return redirect("controls:control_detail", pk=control.pk)
+    else:
+        form = ControlForm(instance=control)
+    return render(request, "controls/control_form.html", {"form": form, "control": control})

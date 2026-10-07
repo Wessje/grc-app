@@ -9,7 +9,12 @@ framework requirements it is mapped to.
 {% block content %}
 <p><a href="{% url 'controls:control_list' %}">← Back to controls</a></p>
 
-<h1>{{ control.control_id }}: {{ control.title }}</h1>
+<div class="page-heading">
+    <h1>{{ control.control_id }}: {{ control.title }}</h1>
+    {% if perms.controls.change_control and not control.archived_at %}
+        <a class="button" href="{% url 'controls:control_edit' control.pk %}">Edit</a>
+    {% endif %}
+</div>
 
 {% if control.archived_at %}
     <p class="notice">Archived on {{ control.archived_at }}. This control is read-only until it is restored.</p>

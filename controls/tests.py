@@ -373,6 +373,91 @@ class ControlPageTests(TestCase):
         self.control.save()
         response = self.client.get(reverse("controls:control_detail", args=[self.control.pk]))
         self.assertContains(response, "read-only until it is restored")
+        self.assertNotContains(response, ">Edit</a>")
+
+
+def control_form_data(**overrides):
+    """
+    Build a valid submission for the New control and Edit pages.
+
+    Input: any fields to change from the defaults.
+    Output: a dictionary the test client can post.
+    """
+    data = {
+        "title": "Visitor sign-in log",
+        "description": "Visitors sign in at reception.",
+        "owner": "Facilities",
+        "control_type": Control.ControlType.DETECTIVE,
+        "status": Control.Status.PLANNED,
+        "notes": "",
+    }
+    data.update(overrides)
+    return data
+
+
+class ControlFormPagesTests(TestCase):
+    """The New and Edit pages validate input and assign a Control ID."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_superuser(
+            username="w", password="test-password-123"
+        )
+        self.client.force_login(self.user)
+
+    def test_empty_form_is_rejected_with_messages(self):
+        response = self.client.post(reverse("controls:control_create"), {})
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Please correct the errors below.")
+        self.assertContains(response, "This field is required.")
+        self.assertFalse(Control.objects.exists())
+
+    def test_create_assigns_a_control_id_and_opens_the_detail_page(self):
+        response = self.client.post(
+            reverse("controls:control_create"), control_form_data(), follow=True
+        )
+        control = Control.objects.get()
+        self.assertRedirects(response, reverse("controls:control_detail", args=[control.pk]))
+        self.assertEqual(control.control_id, "CTRL-0001")
+        self.assertEqual(control.status, Control.Status.PLANNED)
+        self.assertContains(response, "CTRL-0001 created.")
+        self.assertContains(response, "Visitor sign-in log")
+
+    def test_edit_saves_the_change(self):
+        self.client.post(reverse("controls:control_create"), control_form_data())
+        control = Control.objects.get()
+        response = self.client.post(
+            reverse("controls:control_edit", args=[control.pk]),
+            control_form_data(status=Control.Status.IN_PLACE, owner="Reception"),
+        )
+        self.assertRedirects(response, reverse("controls:control_detail", args=[control.pk]))
+        control.refresh_from_db()
+        self.assertEqual(control.status, Control.Status.IN_PLACE)
+        self.assertEqual(control.owner, "Reception")
+        self.assertEqual(control.control_id, "CTRL-0001")
+
+    def test_archived_control_cannot_be_edited(self):
+        control = make_control(archived_at=timezone.now())
+        control.save()
+        edit_url = reverse("controls:control_edit", args=[control.pk])
+        self.assertEqual(self.client.get(edit_url).status_code, 403)
+        response = self.client.post(edit_url, control_form_data(title="Changed"))
+        self.assertEqual(response.status_code, 403)
+        control.refresh_from_db()
+        self.assertEqual(control.title, "Multi-factor authentication")
+
+    def test_users_without_permission_cannot_create_or_edit(self):
+        control = make_control()
+        control.save()
+        reader = get_user_model().objects.create_user(username="reader", password="x-Long-pw-123")
+        self.client.force_login(reader)
+        self.assertEqual(self.client.get(reverse("controls:control_create")).status_code, 403)
+        self.assertEqual(
+            self.client.get(reverse("controls:control_edit", args=[control.pk])).status_code, 403
+        )
+        detail = self.client.get(reverse("controls:control_detail", args=[control.pk]))
+        self.assertNotContains(detail, ">Edit</a>")
+        listing = self.client.get(reverse("controls:control_list"))
+        self.assertNotContains(listing, "New control")
 
 
 class FrameworkPageTests(TestCase):
