@@ -7,7 +7,7 @@ rating, or how effective a control is for a risk. Those stay separate
 judgments.
 
 This file is the central definition of an assessment, so the admin screen
-enforces these rules.
+and our own forms enforce these rules.
 """
 
 from django.core.exceptions import ValidationError

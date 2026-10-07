@@ -313,3 +313,123 @@ class AssessmentPageTests(TestCase):
     def test_unknown_assessment_is_not_found(self):
         response = self.client.get(reverse("assessments:assessment_detail", args=[9999]))
         self.assertEqual(response.status_code, 404)
+
+    def test_readers_do_not_see_new_or_edit(self):
+        listing = self.client.get(reverse("assessments:assessment_list"))
+        self.assertNotContains(listing, ">New assessment</a>")
+        detail = self.client.get(reverse("assessments:assessment_detail", args=[self.test.pk]))
+        self.assertNotContains(detail, ">Edit</a>")
+
+
+def assessment_form_data(control, **overrides):
+    """
+    Build a valid submission for the New assessment and Edit pages.
+
+    Input: the control the test covers, and any fields to change.
+    Output: a dictionary the test client can post.
+    """
+    data = {
+        "title": "Visitor log check",
+        "assessment_type": Assessment.AssessmentType.CONTROL_TEST,
+        "review_date": "2026-10-07",
+        "reviewer": "Facilities",
+        "status": Assessment.Status.PLANNED,
+        "risk": "",
+        "control": control.pk,
+        "outcome": "",
+        "findings": "",
+        "evidence": "",
+        "next_review_date": "",
+        "notes": "",
+    }
+    data.update(overrides)
+    return data
+
+
+class AssessmentFormPagesTests(TestCase):
+    """The New and Edit pages apply the same rules as the admin screen."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_superuser(
+            username="w", password="test-password-123"
+        )
+        self.client.force_login(self.user)
+        self.control = make_control()
+        self.control.save()
+
+    def test_empty_form_is_rejected(self):
+        response = self.client.post(reverse("assessments:assessment_create"), {})
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Please correct the errors below.")
+        self.assertFalse(Assessment.objects.exists())
+
+    def test_risk_review_without_a_risk_is_rejected(self):
+        data = assessment_form_data(
+            self.control, assessment_type=Assessment.AssessmentType.RISK_REVIEW
+        )
+        data["control"] = ""
+        response = self.client.post(reverse("assessments:assessment_create"), data)
+        self.assertContains(response, "Choose the risk this review covers.")
+        self.assertFalse(Assessment.objects.exists())
+
+    def test_create_assigns_an_id_and_shows_on_the_control(self):
+        response = self.client.post(
+            reverse("assessments:assessment_create"),
+            assessment_form_data(self.control),
+            follow=True,
+        )
+        assessment = Assessment.objects.get()
+        self.assertRedirects(
+            response, reverse("assessments:assessment_detail", args=[assessment.pk])
+        )
+        self.assertEqual(assessment.assessment_id, "ASMT-0001")
+        self.assertContains(response, "ASMT-0001 created.")
+        control_page = self.client.get(reverse("controls:control_detail", args=[self.control.pk]))
+        self.assertContains(control_page, "Visitor log check")
+
+    def test_completing_an_assessment_needs_an_outcome(self):
+        self.client.post(reverse("assessments:assessment_create"), assessment_form_data(self.control))
+        assessment = Assessment.objects.get()
+        edit_url = reverse("assessments:assessment_edit", args=[assessment.pk])
+        rejected = self.client.post(
+            edit_url, assessment_form_data(self.control, status=Assessment.Status.COMPLETE)
+        )
+        self.assertContains(rejected, "Record the outcome when the assessment is complete.")
+        assessment.refresh_from_db()
+        self.assertEqual(assessment.status, Assessment.Status.PLANNED)
+
+        saved = self.client.post(
+            edit_url,
+            assessment_form_data(
+                self.control,
+                status=Assessment.Status.COMPLETE,
+                outcome=Assessment.Outcome.PARTIAL,
+                findings="The log is not always completed.",
+                evidence="Sample of last week's visitor book.",
+            ),
+        )
+        self.assertRedirects(saved, reverse("assessments:assessment_detail", args=[assessment.pk]))
+        assessment.refresh_from_db()
+        self.assertEqual(assessment.outcome, Assessment.Outcome.PARTIAL)
+        self.assertEqual(assessment.assessment_id, "ASMT-0001")
+
+    def test_archived_assessment_cannot_be_edited(self):
+        assessment = make_assessment(control=self.control, archived_at=timezone.now())
+        assessment.save()
+        edit_url = reverse("assessments:assessment_edit", args=[assessment.pk])
+        self.assertEqual(self.client.get(edit_url).status_code, 403)
+        response = self.client.post(edit_url, assessment_form_data(self.control, title="Changed"))
+        self.assertEqual(response.status_code, 403)
+        assessment.refresh_from_db()
+        self.assertEqual(assessment.title, "MFA operating check")
+
+    def test_users_without_permission_cannot_create_or_edit(self):
+        assessment = make_assessment(control=self.control)
+        assessment.save()
+        reader = get_user_model().objects.create_user(username="reader", password="x-Long-pw-123")
+        self.client.force_login(reader)
+        self.assertEqual(self.client.get(reverse("assessments:assessment_create")).status_code, 403)
+        self.assertEqual(
+            self.client.get(reverse("assessments:assessment_edit", args=[assessment.pk])).status_code,
+            403,
+        )

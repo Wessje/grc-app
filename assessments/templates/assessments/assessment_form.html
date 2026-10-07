@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% comment %}
+Form page for creating an assessment (assessment is empty) or editing one.
+Errors from the validation rules are shown next to the field they concern.
+{% endcomment %}
+
+{% block title %}{% if assessment %}Edit {{ assessment.assessment_id }}{% else %}New assessment{% endif %}{% endblock %}
+
+{% block content %}
+{% if assessment %}
+    <p><a href="{% url 'assessments:assessment_detail' assessment.pk %}">← Back to {{ assessment.assessment_id }}</a></p>
+    <h1>Edit {{ assessment.assessment_id }}: {{ assessment.title }}</h1>
+{% else %}
+    <p><a href="{% url 'assessments:assessment_list' %}">← Back to assessments</a></p>
+    <h1>New assessment</h1>
+{% endif %}
+
+{% if form.errors %}
+    <p class="notice flag-notice">Please correct the errors below.</p>
+{% endif %}
+{{ form.non_field_errors }}
+
+<form method="post" class="risk-form" novalidate>
+    {% csrf_token %}
+    {% for heading, fields in form.grouped_fields %}
+        <fieldset>
+            <legend>{{ heading }}</legend>
+            {% if heading == "Subject" %}
+                <p class="hint">A control test names a control. A risk review names a risk. Leave the other one empty.</p>
+            {% endif %}
+            {% for field in fields %}
+                <div class="form-row{% if field.errors %} has-error{% endif %}">
+                    <label for="{{ field.id_for_label }}">
+                        {{ field.label }}{% if field.field.required %} <span class="required">*</span>{% endif %}
+                    </label>
+                    {{ field }}
+                    {% if field.help_text %}<p class="help">{{ field.help_text }}</p>{% endif %}
+                    {% for error in field.errors %}<p class="error">{{ error }}</p>{% endfor %}
+                </div>
+            {% endfor %}
+        </fieldset>
+    {% endfor %}
+    <p class="hint"><span class="required">*</span> required. The Assessment ID is assigned automatically. An outcome, finding and evidence are required when the status is Complete.</p>
+    <button type="submit" class="button">{% if assessment %}Save changes{% else %}Create assessment{% endif %}</button>
+</form>
+{% endblock %}

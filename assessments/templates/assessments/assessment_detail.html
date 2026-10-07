@@ -8,7 +8,12 @@ Detail page for one assessment: who reviewed what, and the finding, evidence and
 {% block content %}
 <p><a href="{% url 'assessments:assessment_list' %}">← Back to assessments</a></p>
 
-<h1>{{ assessment.assessment_id }}: {{ assessment.title }}</h1>
+<div class="page-heading">
+    <h1>{{ assessment.assessment_id }}: {{ assessment.title }}</h1>
+    {% if perms.assessments.change_assessment and not assessment.archived_at %}
+        <a class="button" href="{% url 'assessments:assessment_edit' assessment.pk %}">Edit</a>
+    {% endif %}
+</div>
 
 {% if assessment.archived_at %}
     <p class="notice">Archived on {{ assessment.archived_at }}. This assessment is read-only.</p>

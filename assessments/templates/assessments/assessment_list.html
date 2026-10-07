@@ -6,8 +6,11 @@ The assessment list: reviews that are not archived, newest review date first.
 {% block title %}Assessments{% endblock %}
 
 {% block content %}
-<h1>Assessments</h1>
-<p class="hint">Periodic reviews of a risk, or tests of a control. Add or edit them in the admin screen. Archived assessments are not shown.</p>
+<div class="page-heading">
+    <h1>Assessments</h1>
+    {% if perms.assessments.add_assessment %}<a class="button" href="{% url 'assessments:assessment_create' %}">New assessment</a>{% endif %}
+</div>
+<p class="hint">Periodic reviews of a risk, or tests of a control. Archived assessments are not shown.</p>
 
 {% if assessments %}
 <table class="register">
@@ -47,6 +50,6 @@ The assessment list: reviews that are not archived, newest review date first.
     </tbody>
 </table>
 {% else %}
-<p>No assessments yet. Add them in the admin screen.</p>
+<p>No assessments yet. Add one with "New assessment".</p>
 {% endif %}
 {% endblock %}
