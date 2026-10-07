@@ -120,10 +120,23 @@ class Risk(models.Model):
     description = models.TextField()
     # PROTECT: a category that is still used by a risk cannot be deleted.
     category = models.ForeignKey(RiskCategory, on_delete=models.PROTECT)
+    # PROTECT: a process or solution that still has risks cannot be deleted.
+    # null=True so risks that already exist can be saved in the database
+    # before someone chooses one. blank=False so a new save, on our form or
+    # in admin, must name one. Archive a process instead of deleting it.
+    process = models.ForeignKey(
+        "processes.Process",
+        verbose_name="process or solution",
+        on_delete=models.PROTECT,
+        related_name="risks",
+        null=True,
+        blank=False,
+        help_text="Every risk belongs to one process or solution.",
+    )
     owner = models.CharField(max_length=200, help_text="Person or role.")
     risk_source = models.CharField(
         max_length=200,
-        help_text="Where the risk resides, e.g. a process or a solution/system.",
+        help_text="Where the risk shows up in more detail, e.g. a system or a team.",
     )
     date_identified = models.DateField(default=timezone.localdate)
 

@@ -21,6 +21,7 @@ TRACKED_FIELDS = [
     "title",
     "description",
     "category",
+    "process",
     "owner",
     "risk_source",
     "date_identified",

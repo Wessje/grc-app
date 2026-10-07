@@ -31,6 +31,7 @@ SORTABLE_COLUMNS = {
     "title": ("Title", "title"),
     "owner": ("Owner", "owner"),
     "category": ("Category", "category__name"),
+    "process": ("Process", "process__name"),
     "score": ("Inherent score", "inherent_score"),
     "rating": ("Inherent rating", "inherent_score"),
     "residual_score": ("Residual score", "residual_score"),
@@ -88,7 +89,7 @@ def filter_and_sort_risks(choices):
     non-archived risks, sorted as requested (Risk ID by default). Archived
     risks are never included; they are on the Archive page.
     """
-    risks = Risk.objects.filter(archived_at__isnull=True).select_related("category")
+    risks = Risk.objects.filter(archived_at__isnull=True).select_related("category", "process")
 
     status = choices.get("status", ACTIVE)
     if status == ACTIVE:

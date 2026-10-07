@@ -16,6 +16,7 @@ from django.utils import timezone
 
 from controls.forms import RiskControlLinkForm
 from controls.models import Control, ControlRequirement, FrameworkRequirement, RiskControl
+from processes.models import Process
 from risks.models import Risk, RiskCategory, RiskChange
 
 
@@ -147,10 +148,17 @@ class ControlAdminTests(TestCase):
 def make_risk_for_links():
     """Create and save one risk that control links can point at. Output: the risk."""
     category = RiskCategory.objects.create(name="Cyber")
+    process = Process.objects.create(
+        kind=Process.Kind.SOLUTION,
+        name="Email",
+        description="Staff email.",
+        owner="IT manager",
+    )
     risk = Risk(
         title="Phishing leads to stolen staff credentials",
         description="Made-up test risk.",
         category=category,
+        process=process,
         owner="IT security officer",
         risk_source="Email",
         inherent_likelihood=4,
@@ -222,6 +230,7 @@ class ControlLinkFormTests(TestCase):
             "title": self.risk.title,
             "description": self.risk.description,
             "category": self.risk.category_id,
+            "process": self.risk.process_id,
             "owner": self.risk.owner,
             "risk_source": self.risk.risk_source,
             "date_identified": self.risk.date_identified.isoformat(),

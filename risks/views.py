@@ -39,12 +39,16 @@ def risk_list(request):
     choices = valid_choices(filter_form)
     # list() fetches the risks once, for both the heat map and the table.
     risks = list(filter_and_sort_risks(choices))
+    # Count every active risk that still has no process, including ones the
+    # current filter hides (for example Closed), so none are forgotten.
+    unlinked_count = Risk.objects.filter(archived_at__isnull=True, process__isnull=True).count()
     return render(request, "risks/risk_list.html", {
         "risks": risks,
         "heat_map": build_heat_map(risks),
         "filter_form": filter_form,
         "columns": column_headings(request.GET, choices.get("sort")),
         "is_filtered": any(choices.get(name) for name in ["status", "category", "rating", "q"]),
+        "unlinked_count": unlinked_count,
     })
 
 
@@ -56,7 +60,7 @@ def risk_detail(request, pk):
     Output: the detail page, or a "not found" page if no such risk exists.
     Archived risks can still be viewed here.
     """
-    risk = get_object_or_404(Risk.objects.select_related("category"), pk=pk)
+    risk = get_object_or_404(Risk.objects.select_related("category", "process"), pk=pk)
     changes = risk.changes.select_related("changed_by")
     control_links = risk.control_links.select_related("control")
     assessments = risk.assessments.filter(archived_at__isnull=True).order_by("-review_date", "-id")

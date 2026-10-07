@@ -28,6 +28,9 @@ Each rating is colour-coded and also written out, so it doesn't rely on colour a
     {{ risks|length }} risk{{ risks|length|pluralize }} shown. Archived risks are on the
     <a href="{% url 'risks:archived_risk_list' %}">Archive</a> page.
 </p>
+{% if unlinked_count %}
+<p class="notice">{{ unlinked_count }} risk{{ unlinked_count|pluralize }} {{ unlinked_count|pluralize:"is,are" }} not linked to a process or solution yet. Open each one and choose it on Edit.</p>
+{% endif %}
 
 {% if risks %}
 {# <details> makes the heat map collapsible without any JavaScript. #}
@@ -79,6 +82,13 @@ Each rating is colour-coded and also written out, so it doesn't rely on colour a
             </td>
             <td>{{ risk.owner }}</td>
             <td>{{ risk.category }}</td>
+            <td>
+                {% if risk.process %}
+                    <a href="{% url 'processes:process_detail' risk.process.pk %}">{{ risk.process.name }}</a>
+                {% else %}
+                    <span class="flag">Not linked</span>
+                {% endif %}
+            </td>
             <td class="number">{{ risk.inherent_score }}</td>
             <td><span class="rating rating-{{ risk.inherent_rating|lower }}">{{ risk.inherent_rating }}</span></td>
             <td class="number">{% if risk.residual_score %}{{ risk.residual_score }}{% else %}—{% endif %}</td>

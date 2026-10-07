@@ -31,6 +31,7 @@ class RiskAdmin(admin.ModelAdmin):
         "risk_id",
         "title",
         "category",
+        "process",
         "owner",
         "inherent_score",
         "inherent_rating",
@@ -39,7 +40,7 @@ class RiskAdmin(admin.ModelAdmin):
         "status",
         "is_archived",
     ]
-    list_filter = ["status", "category"]
+    list_filter = ["status", "category", "process"]
     search_fields = ["risk_id", "title", "description"]
     readonly_fields = [
         "risk_id",
@@ -52,8 +53,8 @@ class RiskAdmin(admin.ModelAdmin):
         "updated_at",
     ]
     fieldsets = [
-        (None, {"fields": ["risk_id", "title", "description", "category", "owner",
-                           "risk_source", "date_identified"]}),
+        (None, {"fields": ["risk_id", "title", "description", "category", "process",
+                           "owner", "risk_source", "date_identified"]}),
         ("Inherent risk", {"fields": ["inherent_likelihood", "inherent_impact",
                                       "inherent_score", "inherent_rating"]}),
         ("Residual risk (after controls)", {"fields": ["residual_likelihood", "residual_impact",

@@ -8,7 +8,9 @@ checked, so the form and the admin screen enforce the same rules.
 """
 
 from django import forms
+from django.db.models import Q
 
+from processes.models import Process
 from risks.models import Risk
 
 
@@ -27,8 +29,8 @@ class RiskForm(forms.ModelForm):
 
     # Sections shown on the page: (heading, field names).
     FIELD_GROUPS = [
-        ("Risk", ["title", "description", "category", "owner", "risk_source",
-                  "date_identified"]),
+        ("Risk", ["title", "description", "category", "process", "owner",
+                  "risk_source", "date_identified"]),
         ("Inherent risk", ["inherent_likelihood", "inherent_impact"]),
         ("Residual risk (after controls)", ["residual_likelihood", "residual_impact"]),
         ("Treatment", ["status", "response_type", "response_description"]),
@@ -40,7 +42,7 @@ class RiskForm(forms.ModelForm):
     class Meta:
         model = Risk
         fields = [
-            "title", "description", "category", "owner", "risk_source",
+            "title", "description", "category", "process", "owner", "risk_source",
             "date_identified", "inherent_likelihood", "inherent_impact",
             "residual_likelihood", "residual_impact",
             "status", "response_type", "response_description",
@@ -54,6 +56,20 @@ class RiskForm(forms.ModelForm):
             "acceptance_date": DatePickerInput(),
             "acceptance_expiry_date": DatePickerInput(),
         }
+
+    def __init__(self, *args, **kwargs):
+        """
+        Limit the process list to ones that are still in use.
+
+        An archived process or solution is not offered for a new link. If this
+        risk already points at one that was archived later, that choice stays
+        in the list so the link is not dropped by accident.
+        """
+        super().__init__(*args, **kwargs)
+        available = Q(archived_at__isnull=True)
+        if self.instance.process_id:
+            available |= Q(pk=self.instance.process_id)
+        self.fields["process"].queryset = Process.objects.filter(available).order_by("name")
 
     def grouped_fields(self):
         """

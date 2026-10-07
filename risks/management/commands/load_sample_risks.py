@@ -15,6 +15,7 @@ from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.utils import timezone
 
+from processes.models import Process
 from risks.models import Risk, RiskCategory
 
 STARTING_CATEGORIES = [
@@ -213,11 +214,24 @@ class Command(BaseCommand):
         """
         created_count = 0
         skipped_count = 0
+        # Created only when a new sample risk needs it. Risks already in the
+        # register are left as they are, including ones with no process yet.
+        sample_process = None
         for fields in build_sample_risks(timezone.localdate()):
             if Risk.objects.filter(title=fields["title"]).exists():
                 skipped_count += 1
                 continue
+            if sample_process is None:
+                sample_process, _created = Process.objects.get_or_create(
+                    name="Sample operations",
+                    defaults={
+                        "kind": Process.Kind.PROCESS,
+                        "description": "Made-up process used by the sample risks.",
+                        "owner": "Sample owner",
+                    },
+                )
             fields["category"] = RiskCategory.objects.get(name=fields["category"])
+            fields["process"] = sample_process
             risk = Risk(**fields)
             risk.full_clean()
             risk.save()

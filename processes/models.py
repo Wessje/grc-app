@@ -3,8 +3,8 @@ Processes and solutions: the things a risk belongs to.
 
 One list covers both. A business process (for example payroll) and a
 solution you run (for example email) are the same kind of record, told
-apart by the type. Later, every risk will point at one of these, and a
-control test will be done in the context of one of them.
+apart by the type. Every risk points at one of these. A control test
+will later be done in the context of one of them.
 
 This file is the central definition, so the admin screen and our own forms
 enforce the same rules.

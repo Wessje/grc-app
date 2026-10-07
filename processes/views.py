@@ -38,7 +38,11 @@ def process_detail(request, pk):
     An archived record can still be opened directly.
     """
     process = get_object_or_404(Process, pk=pk)
-    return render(request, "processes/process_detail.html", {"process": process})
+    risks = process.risks.select_related("category").order_by("id")
+    return render(request, "processes/process_detail.html", {
+        "process": process,
+        "risks": risks,
+    })
 
 
 @permission_required("processes.add_process", raise_exception=True)

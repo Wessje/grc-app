@@ -36,12 +36,23 @@ Flags expired acceptances and archived risks at the top.
 {% if risk.is_acceptance_expired %}
     <p class="notice flag-notice">Acceptance expired on {{ risk.acceptance_expiry_date }}. Re-review this risk acceptance.</p>
 {% endif %}
+{% if not risk.process and not risk.archived_at %}
+    <p class="notice">This risk is not linked to a process or solution yet. Edit it to choose one.</p>
+{% endif %}
 
 <section class="details">
     <h2>Risk</h2>
     <dl>
         <dt>Description</dt><dd class="multiline">{{ risk.description }}</dd>
         <dt>Category</dt><dd>{{ risk.category }}</dd>
+        <dt>Process or solution</dt>
+        <dd>
+            {% if risk.process %}
+                <a href="{% url 'processes:process_detail' risk.process.pk %}">{{ risk.process }}</a>
+            {% else %}
+                —
+            {% endif %}
+        </dd>
         <dt>Owner</dt><dd>{{ risk.owner }}</dd>
         <dt>Risk source</dt><dd>{{ risk.risk_source }}</dd>
         <dt>Date identified</dt><dd>{{ risk.date_identified }}</dd>

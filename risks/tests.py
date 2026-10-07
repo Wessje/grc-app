@@ -24,6 +24,7 @@ from django.test import TestCase, TransactionTestCase
 from django.urls import reverse
 from django.utils import timezone
 
+from processes.models import Process
 from risks.models import (
     Risk,
     RiskCategory,
@@ -36,12 +37,31 @@ from risks.heatmap import build_heat_map
 from risks.management.commands.backup_db import backup_file_path
 
 
+def shared_process():
+    """
+    Return one process that test risks can belong to.
+
+    The same record is reused so a form save does not look like a change of
+    process. Output: a saved Process.
+    """
+    process, _created = Process.objects.get_or_create(
+        name="Email",
+        defaults={
+            "kind": Process.Kind.SOLUTION,
+            "description": "Staff email and calendars.",
+            "owner": "IT manager",
+        },
+    )
+    return process
+
+
 def make_risk(category, **overrides):
     """
     Build a valid, unsaved risk for tests.
 
     Inputs: a category, plus any fields to change from the defaults.
-    Output: a Risk object (not yet saved to the database).
+    Output: a Risk object (not yet saved to the database). A process is
+    attached unless the caller passes process= explicitly (including None).
     """
     fields = {
         "title": "Ransomware on file server",
@@ -53,6 +73,8 @@ def make_risk(category, **overrides):
         "inherent_impact": 4,
     }
     fields.update(overrides)
+    if "process" not in overrides:
+        fields["process"] = shared_process()
     return Risk(**fields)
 
 
@@ -239,6 +261,7 @@ class AdminTests(TestCase):
             "title": "Phishing",
             "description": "Made-up test risk.",
             "category": self.category.pk,
+            "process": shared_process().pk,
             "owner": "IT manager",
             "risk_source": "Email",
             "date_identified": "05/10/2026",
@@ -491,6 +514,7 @@ def risk_form_data(category, **overrides):
         "title": "Ransomware on file server",
         "description": "Made-up test risk.",
         "category": category.pk,
+        "process": shared_process().pk,
         "owner": "IT manager",
         "risk_source": "File server",
         "date_identified": "2026-10-05",
@@ -995,3 +1019,75 @@ class HeatMapTests(TestCase):
                 total = sum(cell["count"] for row in heat_map["rows"] for cell in row["cells"])
                 self.assertEqual(total, len(response.context["risks"]))
         self.assertContains(self.client.get(reverse("risks:risk_list")), "Heat map")
+
+
+class ProcessLinkTests(TestCase):
+    """Every risk belongs to one process or solution."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_superuser(
+            username="w", password="test-password-123"
+        )
+        self.client.force_login(self.user)
+        self.category = RiskCategory.objects.create(name="Cyber")
+        self.process = shared_process()
+
+    def test_a_risk_needs_a_process(self):
+        self.assertIn("process", validation_errors(make_risk(self.category, process=None)))
+
+    def test_create_without_a_process_is_rejected(self):
+        response = self.client.post(
+            reverse("risks:risk_create"),
+            risk_form_data(self.category, process=""),
+        )
+        self.assertContains(response, "This field is required.")
+        self.assertFalse(Risk.objects.exists())
+
+    def test_linking_shows_on_the_register_and_the_process(self):
+        self.client.post(reverse("risks:risk_create"), risk_form_data(self.category))
+        risk = Risk.objects.get()
+        self.assertEqual(risk.process, self.process)
+        register = self.client.get(reverse("risks:risk_list"))
+        self.assertContains(register, "Email")
+        page = self.client.get(reverse("processes:process_detail", args=[self.process.pk]))
+        self.assertContains(page, risk.risk_id)
+        self.assertContains(page, risk.title)
+
+    def test_assigning_a_process_is_recorded(self):
+        risk = make_risk(self.category, process=None)
+        risk.save()
+        self.client.post(
+            reverse("risks:risk_edit", args=[risk.pk]),
+            risk_form_data(self.category, date_identified=risk.date_identified.isoformat()),
+        )
+        risk.refresh_from_db()
+        self.assertEqual(risk.process, self.process)
+        change = risk.changes.get()
+        self.assertEqual(change.field_name, "Process or solution")
+        self.assertEqual(change.old_value, "")
+        self.assertIn("Email", change.new_value)
+
+    def test_an_unlinked_risk_is_called_out(self):
+        make_risk(self.category, process=None, title="Loose risk").save()
+        register = self.client.get(reverse("risks:risk_list"))
+        self.assertContains(register, "not linked to a process or solution")
+        self.assertContains(register, "Not linked")
+
+    def test_archived_process_is_not_offered_for_a_new_risk(self):
+        self.process.archived_at = timezone.now()
+        self.process.save()
+        payroll = Process.objects.create(
+            kind=Process.Kind.PROCESS,
+            name="Payroll",
+            description="Paying staff.",
+            owner="Finance",
+        )
+        response = self.client.get(reverse("risks:risk_create"))
+        names = {choice.name for choice in response.context["form"].fields["process"].queryset}
+        self.assertEqual(names, {"Payroll"})
+        self.assertEqual(payroll.name, "Payroll")
+
+    def test_a_process_with_risks_cannot_be_deleted(self):
+        make_risk(self.category).save()
+        with self.assertRaises(ProtectedError):
+            self.process.delete()
