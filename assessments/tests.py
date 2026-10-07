@@ -433,3 +433,94 @@ class AssessmentFormPagesTests(TestCase):
             self.client.get(reverse("assessments:assessment_edit", args=[assessment.pk])).status_code,
             403,
         )
+
+
+class AssessmentArchiveTests(TestCase):
+    """Archiving hides an assessment; restoring brings it back."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_superuser(
+            username="w", password="test-password-123"
+        )
+        self.client.force_login(self.user)
+        self.control = make_control()
+        self.control.save()
+        self.assessment = make_assessment(
+            control=self.control,
+            status=Assessment.Status.COMPLETE,
+            outcome=Assessment.Outcome.SATISFACTORY,
+            findings="The second factor is required.",
+            evidence="Sign-in screen.",
+        )
+        self.assessment.save()
+        self.archive_url = reverse("assessments:assessment_archive", args=[self.assessment.pk])
+        self.restore_url = reverse("assessments:assessment_restore", args=[self.assessment.pk])
+
+    def test_confirmation_page_does_not_archive_yet(self):
+        response = self.client.get(self.archive_url)
+        self.assertContains(response, "Archive assessment")
+        self.assertContains(response, "not deleted")
+        self.assessment.refresh_from_db()
+        self.assertIsNone(self.assessment.archived_at)
+
+    def test_archive_hides_it_from_the_list_and_the_control(self):
+        self.assertContains(
+            self.client.get(reverse("assessments:assessment_list")), "MFA operating check"
+        )
+        response = self.client.post(self.archive_url)
+        self.assertRedirects(response, reverse("assessments:assessment_list"))
+        self.assessment.refresh_from_db()
+        self.assertIsNotNone(self.assessment.archived_at)
+        self.assertEqual(self.assessment.outcome, Assessment.Outcome.SATISFACTORY)
+        self.assertNotContains(
+            self.client.get(reverse("assessments:assessment_list")), "MFA operating check"
+        )
+        self.assertContains(
+            self.client.get(reverse("assessments:archived_assessment_list")), "MFA operating check"
+        )
+        control_page = self.client.get(reverse("controls:control_detail", args=[self.control.pk]))
+        self.assertNotContains(control_page, "MFA operating check")
+
+    def test_restore_brings_it_back(self):
+        self.client.post(self.archive_url)
+        response = self.client.post(self.restore_url, follow=True)
+        self.assertRedirects(
+            response, reverse("assessments:assessment_detail", args=[self.assessment.pk])
+        )
+        self.assertContains(response, "restored to the list")
+        self.assessment.refresh_from_db()
+        self.assertIsNone(self.assessment.archived_at)
+        self.assertContains(
+            self.client.get(reverse("controls:control_detail", args=[self.control.pk])),
+            "MFA operating check",
+        )
+
+    def test_archived_detail_shows_restore_not_edit(self):
+        self.client.post(self.archive_url)
+        response = self.client.get(
+            reverse("assessments:assessment_detail", args=[self.assessment.pk])
+        )
+        self.assertContains(response, "read-only until it is restored")
+        self.assertContains(response, ">Restore</button>")
+        self.assertNotContains(response, ">Edit</a>")
+
+    def test_restore_only_accepts_form_submissions(self):
+        self.client.post(self.archive_url)
+        self.assertEqual(self.client.get(self.restore_url).status_code, 405)
+        self.assessment.refresh_from_db()
+        self.assertIsNotNone(self.assessment.archived_at)
+
+    def test_users_without_permission_cannot_archive_or_restore(self):
+        reader = get_user_model().objects.create_user(username="reader", password="x-Long-pw-123")
+        self.client.force_login(reader)
+        self.assertEqual(self.client.post(self.archive_url).status_code, 403)
+        self.assessment.refresh_from_db()
+        self.assertIsNone(self.assessment.archived_at)
+
+        self.client.force_login(self.user)
+        self.client.post(self.archive_url)
+        self.client.force_login(reader)
+        self.assertEqual(self.client.post(self.restore_url).status_code, 403)
+        archive_page = self.client.get(reverse("assessments:archived_assessment_list"))
+        self.assertContains(archive_page, "MFA operating check")
+        self.assertNotContains(archive_page, ">Restore</button>")

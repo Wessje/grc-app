@@ -10,7 +10,7 @@ The assessment list: reviews that are not archived, newest review date first.
     <h1>Assessments</h1>
     {% if perms.assessments.add_assessment %}<a class="button" href="{% url 'assessments:assessment_create' %}">New assessment</a>{% endif %}
 </div>
-<p class="hint">Periodic reviews of a risk, or tests of a control. Archived assessments are not shown.</p>
+<p class="hint">Periodic reviews of a risk, or tests of a control. Archived assessments are not shown. <a href="{% url 'assessments:archived_assessment_list' %}">Archived assessments</a></p>
 
 {% if assessments %}
 <table class="register">

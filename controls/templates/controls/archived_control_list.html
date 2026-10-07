@@ -7,7 +7,7 @@ Archived controls, each with a Restore button for people who may change controls
 
 {% block content %}
 <h1>Archived controls</h1>
-<p class="hint">Archived controls are kept and stay read-only. Restore a control to bring it back into the register. <a href="{% url 'risks:archived_risk_list' %}">Archived risks</a></p>
+<p class="hint">Archived controls are kept and stay read-only. Restore a control to bring it back into the register. <a href="{% url 'risks:archived_risk_list' %}">Archived risks</a> · <a href="{% url 'assessments:archived_assessment_list' %}">Archived assessments</a></p>
 
 {% if controls %}
 <table class="register">

@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% comment %}
+Confirmation page shown before an assessment is archived.
+{% endcomment %}
+
+{% block title %}Archive {{ assessment.assessment_id }}{% endblock %}
+
+{% block content %}
+<h1>Archive {{ assessment.assessment_id }}: {{ assessment.title }}?</h1>
+
+<p>Archiving takes this assessment out of the list. It is <strong>not deleted</strong>:</p>
+<ul>
+    <li>it stays on the Archived assessments page, with its finding, evidence and outcome;</li>
+    <li>it becomes read-only until it is restored;</li>
+    <li>it drops off the risk or control page until it is restored.</li>
+</ul>
+
+<form method="post" class="button-row">
+    {% csrf_token %}
+    <button type="submit" class="button button-warning">Archive assessment</button>
+    <a href="{% url 'assessments:assessment_detail' assessment.pk %}">Cancel</a>
+</form>
+{% endblock %}

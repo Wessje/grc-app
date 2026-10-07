@@ -6,17 +6,31 @@ Detail page for one assessment: who reviewed what, and the finding, evidence and
 {% block title %}{{ assessment.assessment_id }}{% endblock %}
 
 {% block content %}
-<p><a href="{% url 'assessments:assessment_list' %}">← Back to assessments</a></p>
+{% if assessment.archived_at %}
+    <p><a href="{% url 'assessments:archived_assessment_list' %}">← Back to archived assessments</a></p>
+{% else %}
+    <p><a href="{% url 'assessments:assessment_list' %}">← Back to assessments</a></p>
+{% endif %}
 
 <div class="page-heading">
     <h1>{{ assessment.assessment_id }}: {{ assessment.title }}</h1>
-    {% if perms.assessments.change_assessment and not assessment.archived_at %}
-        <a class="button" href="{% url 'assessments:assessment_edit' assessment.pk %}">Edit</a>
+    {% if perms.assessments.change_assessment %}
+        <div class="button-row">
+        {% if assessment.archived_at %}
+            <form method="post" action="{% url 'assessments:assessment_restore' assessment.pk %}">
+                {% csrf_token %}
+                <button type="submit" class="button">Restore</button>
+            </form>
+        {% else %}
+            <a class="button" href="{% url 'assessments:assessment_edit' assessment.pk %}">Edit</a>
+            <a class="button button-warning" href="{% url 'assessments:assessment_archive' assessment.pk %}">Archive</a>
+        {% endif %}
+        </div>
     {% endif %}
 </div>
 
 {% if assessment.archived_at %}
-    <p class="notice">Archived on {{ assessment.archived_at }}. This assessment is read-only.</p>
+    <p class="notice">Archived on {{ assessment.archived_at }}. This assessment is read-only until it is restored.</p>
 {% endif %}
 
 <section class="details">

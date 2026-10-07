@@ -7,7 +7,7 @@ The archive: risks taken out of the register, each with a Restore button.
 
 {% block content %}
 <h1>Archive</h1>
-<p class="hint">Archived risks are kept, read-only, with their full history. Restore a risk to bring it back into the register. <a href="{% url 'controls:archived_control_list' %}">Archived controls</a></p>
+<p class="hint">Archived risks are kept, read-only, with their full history. Restore a risk to bring it back into the register. <a href="{% url 'controls:archived_control_list' %}">Archived controls</a> · <a href="{% url 'assessments:archived_assessment_list' %}">Archived assessments</a></p>
 
 {% if risks %}
 <table class="register">
