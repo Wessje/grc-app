@@ -39,7 +39,9 @@ Detail page for one assessment: who reviewed what, and the finding, evidence and
         <dt>Type</dt><dd>{{ assessment.get_assessment_type_display }}</dd>
         <dt>Subject</dt>
         <dd>
-            {% if assessment.control %}
+            {% if assessment.process %}
+                <a href="{% url 'processes:process_detail' assessment.process.pk %}">{{ assessment.process }}</a>
+            {% elif assessment.control %}
                 <a href="{% url 'controls:control_detail' assessment.control.pk %}">{{ assessment.control.control_id }}: {{ assessment.control.title }}</a>
             {% elif assessment.risk %}
                 <a href="{% url 'risks:risk_detail' assessment.risk.pk %}">{{ assessment.risk.risk_id }}: {{ assessment.risk.title }}</a>
@@ -50,11 +52,78 @@ Detail page for one assessment: who reviewed what, and the finding, evidence and
         <dt>Review date</dt><dd>{{ assessment.review_date|date:"j M Y" }}</dd>
         <dt>Reviewer</dt><dd>{{ assessment.reviewer }}</dd>
         <dt>Status</dt><dd>{{ assessment.get_status_display }}</dd>
+        {% if assessment.assessment_type != "process_review" %}
         <dt>Outcome</dt><dd>{{ assessment.get_outcome_display|default:"—" }}</dd>
         <dt>Findings</dt><dd class="multiline">{{ assessment.findings|default:"—" }}</dd>
         <dt>Evidence</dt><dd class="multiline">{{ assessment.evidence|default:"—" }}</dd>
+        {% endif %}
         <dt>Next review date</dt><dd>{{ assessment.next_review_date|date:"j M Y"|default:"—" }}</dd>
         <dt>Notes</dt><dd class="multiline">{{ assessment.notes|default:"—" }}</dd>
     </dl>
 </section>
+
+{% if assessment.assessment_type == "process_review" %}
+<section>
+    <h2>Controls tested</h2>
+    {% if assessment.control_results.all %}
+    <table class="register">
+        <thead>
+            <tr>
+                <th>Control</th>
+                <th>Included</th>
+                <th>Outcome</th>
+                <th>Finding</th>
+                <th>Risk</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for line in assessment.control_results.all %}
+            <tr>
+                <td><a href="{% url 'controls:control_detail' line.control.pk %}">{{ line.control.control_id }}</a> {{ line.control.title }}</td>
+                <td>{% if line.include %}Yes{% else %}No{% endif %}</td>
+                <td class="nowrap">{{ line.get_outcome_display|default:"—" }}</td>
+                <td>{{ line.findings|default:"—" }}</td>
+                <td class="nowrap">
+                    {% if line.risk %}
+                        <a href="{% url 'risks:risk_detail' line.risk.pk %}">{{ line.risk.risk_id }}</a>
+                    {% else %}
+                        —
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="hint">No controls were on this review.</p>
+    {% endif %}
+</section>
+<section>
+    <h2>Risks reassessed</h2>
+    {% if assessment.risk_reviews.all %}
+    <table class="register">
+        <thead>
+            <tr>
+                <th>Risk</th>
+                <th>Reassessed</th>
+                <th>Finding</th>
+                <th>Closed from this review</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for line in assessment.risk_reviews.all %}
+            <tr>
+                <td><a href="{% url 'risks:risk_detail' line.risk.pk %}">{{ line.risk.risk_id }}</a> {{ line.risk.title }}</td>
+                <td>{% if line.include %}Yes{% else %}No{% endif %}</td>
+                <td>{{ line.findings|default:"—" }}</td>
+                <td>{% if line.close_risk %}Yes{% else %}No{% endif %}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="hint">No current risks were on this review.</p>
+    {% endif %}
+</section>
+{% endif %}
 {% endblock %}

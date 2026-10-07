@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% comment %}
+Form for a process or solution review. Each control in scope and each
+current risk has its own block. Risks are created or updated only when
+the review is saved as Complete.
+{% endcomment %}
+
+{% block title %}{% if assessment %}Edit {{ assessment.assessment_id }}{% else %}New assessment{% endif %}{% endblock %}
+
+{% block content %}
+<p><a href="{% url 'processes:process_detail' process.pk %}">← Back to {{ process.process_id }}</a></p>
+<h1>{% if assessment %}Edit {{ assessment.assessment_id }}{% else %}New assessment{% endif %}: {{ process.name }}</h1>
+
+{% if form.errors or control_formset.total_error_count or risk_formset.total_error_count %}
+    <p class="notice flag-notice">Please correct the errors below.</p>
+{% endif %}
+{% for error in form.non_field_errors %}<p class="error">{{ error }}</p>{% endfor %}
+
+<form method="post" class="risk-form" novalidate>
+    {% csrf_token %}
+    <fieldset>
+        <legend>Review</legend>
+        {% for field in form %}
+            <div class="form-row{% if field.errors %} has-error{% endif %}">
+                <label for="{{ field.id_for_label }}">
+                    {{ field.label }}{% if field.field.required %} <span class="required">*</span>{% endif %}
+                </label>
+                {{ field }}
+                {% if field.help_text %}<p class="help">{{ field.help_text }}</p>{% endif %}
+                {% for error in field.errors %}<p class="error">{{ error }}</p>{% endfor %}
+            </div>
+        {% endfor %}
+    </fieldset>
+
+    <fieldset>
+        <legend>Controls in scope</legend>
+        <p class="hint">Untick a control to leave it out of this review. Likelihood, impact and category are needed only when the outcome is Partially satisfactory or Unsatisfactory, because that creates or updates a risk. A satisfactory result does not create a risk and does not close one.</p>
+        {{ control_formset.management_form }}
+        {% if not control_rows %}
+            <p class="hint">No controls are in scope yet. Add them on the Edit page for this {{ process.get_kind_display|lower }}.</p>
+        {% endif %}
+        {% for row in control_rows %}
+            {% with line=row.form %}
+            {{ line.control_id }}
+            {% for error in line.non_field_errors %}<p class="error">{{ error }}</p>{% endfor %}
+            <div class="link-row{% if line.errors %} has-error{% endif %}">
+                <p><strong>{{ row.subject.control_id }}: {{ row.subject.title }}</strong></p>
+                <label>{{ line.include }} Include in this assessment</label>
+                <div class="form-row{% if line.outcome.errors %} has-error{% endif %}">
+                    <label for="{{ line.outcome.id_for_label }}">Outcome</label>
+                    {{ line.outcome }}
+                    {% for error in line.outcome.errors %}<p class="error">{{ error }}</p>{% endfor %}
+                </div>
+                <div class="form-row{% if line.findings.errors %} has-error{% endif %}">
+                    <label for="{{ line.findings.id_for_label }}">Finding</label>
+                    {{ line.findings }}
+                    {% for error in line.findings.errors %}<p class="error">{{ error }}</p>{% endfor %}
+                </div>
+                <div class="form-row{% if line.evidence.errors %} has-error{% endif %}">
+                    <label for="{{ line.evidence.id_for_label }}">Evidence</label>
+                    {{ line.evidence }}
+                    {% for error in line.evidence.errors %}<p class="error">{{ error }}</p>{% endfor %}
+                </div>
+                <div class="form-row{% if line.likelihood.errors %} has-error{% endif %}">
+                    <label for="{{ line.likelihood.id_for_label }}">Likelihood</label>
+                    {{ line.likelihood }}
+                    {% for error in line.likelihood.errors %}<p class="error">{{ error }}</p>{% endfor %}
+                </div>
+                <div class="form-row{% if line.impact.errors %} has-error{% endif %}">
+                    <label for="{{ line.impact.id_for_label }}">Impact</label>
+                    {{ line.impact }}
+                    {% for error in line.impact.errors %}<p class="error">{{ error }}</p>{% endfor %}
+                </div>
+                <div class="form-row{% if line.category.errors %} has-error{% endif %}">
+                    <label for="{{ line.category.id_for_label }}">Category for a new risk</label>
+                    {{ line.category }}
+                    {% for error in line.category.errors %}<p class="error">{{ error }}</p>{% endfor %}
+                </div>
+            </div>
+            {% endwith %}
+        {% endfor %}
+    </fieldset>
+
+    <fieldset>
+        <legend>Current risks</legend>
+        <p class="hint">Tick Reassess only for a risk you are reviewing now. Tick Close this risk only when it should be closed. Leave both scores empty to keep the current score.</p>
+        {{ risk_formset.management_form }}
+        {% if not risk_rows %}
+            <p class="hint">No current risks are linked to this {{ process.get_kind_display|lower }}.</p>
+        {% endif %}
+        {% for row in risk_rows %}
+            {% with line=row.form %}
+            {{ line.risk_id }}
+            {% for error in line.non_field_errors %}<p class="error">{{ error }}</p>{% endfor %}
+            <div class="link-row{% if line.errors %} has-error{% endif %}">
+                <p><strong>{{ row.subject.risk_id }}: {{ row.subject.title }}</strong> ({{ row.subject.get_status_display }})</p>
+                <label>{{ line.include }} Reassess this risk</label>
+                <div class="form-row{% if line.findings.errors %} has-error{% endif %}">
+                    <label for="{{ line.findings.id_for_label }}">Finding</label>
+                    {{ line.findings }}
+                    {% for error in line.findings.errors %}<p class="error">{{ error }}</p>{% endfor %}
+                </div>
+                <div class="form-row{% if line.evidence.errors %} has-error{% endif %}">
+                    <label for="{{ line.evidence.id_for_label }}">Evidence</label>
+                    {{ line.evidence }}
+                    {% for error in line.evidence.errors %}<p class="error">{{ error }}</p>{% endfor %}
+                </div>
+                <div class="form-row{% if line.likelihood.errors %} has-error{% endif %}">
+                    <label for="{{ line.likelihood.id_for_label }}">Likelihood</label>
+                    {{ line.likelihood }}
+                    {% for error in line.likelihood.errors %}<p class="error">{{ error }}</p>{% endfor %}
+                </div>
+                <div class="form-row{% if line.impact.errors %} has-error{% endif %}">
+                    <label for="{{ line.impact.id_for_label }}">Impact</label>
+                    {{ line.impact }}
+                    {% for error in line.impact.errors %}<p class="error">{{ error }}</p>{% endfor %}
+                </div>
+                <label>{{ line.close_risk }} Close this risk</label>
+                {% for error in line.close_risk.errors %}<p class="error">{{ error }}</p>{% endfor %}
+            </div>
+            {% endwith %}
+        {% endfor %}
+    </fieldset>
+
+    <p class="hint"><span class="required">*</span> required. Saving as Complete updates the risk register from the ticked lines.</p>
+    <button type="submit" class="button">{% if assessment %}Save changes{% else %}Create{% endif %}</button>
+</form>
+{% endblock %}

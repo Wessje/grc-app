@@ -3,7 +3,8 @@ Web addresses for the assessment pages.
 
 - /assessments/              list of assessments that are not archived
 - /assessments/archive/      list of archived assessments
-- /assessments/new/          form to add an assessment
+- /assessments/new/          form to add an assessment of one risk or one control
+- /assessments/process/<n>/new/  form to review process or solution n
 - /assessments/<n>/          detail page of one assessment (n is its internal record number)
 - /assessments/<n>/edit/     form to change that assessment
 - /assessments/<n>/archive/  confirm and archive an assessment
@@ -20,6 +21,7 @@ urlpatterns = [
     path("", views.assessment_list, name="assessment_list"),
     path("archive/", views.archived_assessment_list, name="archived_assessment_list"),
     path("new/", views.assessment_create, name="assessment_create"),
+    path("process/<int:process_pk>/new/", views.process_review_create, name="process_review_create"),
     path("<int:pk>/", views.assessment_detail, name="assessment_detail"),
     path("<int:pk>/edit/", views.assessment_edit, name="assessment_edit"),
     path("<int:pk>/archive/", views.assessment_archive, name="assessment_archive"),

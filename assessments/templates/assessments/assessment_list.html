@@ -10,7 +10,7 @@ The assessment list: reviews that are not archived, newest review date first.
     <h1>Assessments</h1>
     {% if perms.assessments.add_assessment %}<a class="button" href="{% url 'assessments:assessment_create' %}">New assessment</a>{% endif %}
 </div>
-<p class="hint">Periodic reviews of a risk, or tests of a control. Archived assessments are not shown. <a href="{% url 'assessments:archived_assessment_list' %}">Archived assessments</a></p>
+<p class="hint">Reviews of a process or solution, a risk, or a control. Start a process or solution review from that record's page. Archived assessments are not shown. <a href="{% url 'assessments:archived_assessment_list' %}">Archived assessments</a></p>
 
 {% if assessments %}
 <table class="register">
@@ -32,7 +32,10 @@ The assessment list: reviews that are not archived, newest review date first.
             <td><a href="{% url 'assessments:assessment_detail' assessment.pk %}">{{ assessment.title }}</a></td>
             <td class="nowrap">{{ assessment.get_assessment_type_display }}</td>
             <td>
-                {% if assessment.control %}
+                {% if assessment.process %}
+                    <a href="{% url 'processes:process_detail' assessment.process.pk %}">{{ assessment.process.process_id }}</a>
+                    {{ assessment.process.name }}
+                {% elif assessment.control %}
                     <a href="{% url 'controls:control_detail' assessment.control.pk %}">{{ assessment.control.control_id }}</a>
                     {{ assessment.control.title }}
                 {% elif assessment.risk %}

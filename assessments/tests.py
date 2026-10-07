@@ -15,7 +15,11 @@ from django.urls import reverse
 from django.utils import timezone
 
 from assessments.models import Assessment
+from controls.models import RiskControl
 from controls.tests import make_control, make_risk_for_links
+from processes.models import Process, ProcessControl
+from risks.models import Risk, RiskCategory
+from risks.tests import make_risk
 
 
 def make_assessment(**overrides):
@@ -524,3 +528,144 @@ class AssessmentArchiveTests(TestCase):
         archive_page = self.client.get(reverse("assessments:archived_assessment_list"))
         self.assertContains(archive_page, "MFA operating check")
         self.assertNotContains(archive_page, ">Restore</button>")
+
+
+class ProcessReviewTests(TestCase):
+    """A process review creates, updates or closes risks only as the lines say."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_superuser(
+            username="w", password="test-password-123"
+        )
+        self.client.force_login(self.user)
+        self.category = RiskCategory.objects.create(name="Cyber")
+        self.process = Process.objects.create(
+            kind=Process.Kind.SOLUTION,
+            name="Email",
+            description="Staff email.",
+            owner="IT manager",
+        )
+        self.control = make_control()
+        self.control.save()
+        ProcessControl.objects.create(process=self.process, control=self.control)
+
+    def post_review(self, **overrides):
+        """Post a complete review. Input: fields to change. Output: the response."""
+        data = {
+            "title": "Email review",
+            "review_date": "2026-10-07",
+            "reviewer": "Internal audit",
+            "status": Assessment.Status.COMPLETE,
+            "next_review_date": "",
+            "notes": "",
+            "controls-TOTAL_FORMS": "1",
+            "controls-INITIAL_FORMS": "0",
+            "controls-MIN_NUM_FORMS": "0",
+            "controls-MAX_NUM_FORMS": "1000",
+            "controls-0-control_id": self.control.pk,
+            "controls-0-include": "on",
+            "controls-0-outcome": Assessment.Outcome.UNSATISFACTORY,
+            "controls-0-findings": "The second factor was not required.",
+            "controls-0-evidence": "Walkthrough of the sign-in screen.",
+            "controls-0-likelihood": "3",
+            "controls-0-impact": "4",
+            "controls-0-category": self.category.pk,
+            "risks-TOTAL_FORMS": "0",
+            "risks-INITIAL_FORMS": "0",
+            "risks-MIN_NUM_FORMS": "0",
+            "risks-MAX_NUM_FORMS": "1000",
+        }
+        data.update(overrides)
+        return self.client.post(
+            reverse("assessments:process_review_create", args=[self.process.pk]), data
+        )
+
+    def test_unsatisfactory_creates_an_open_risk(self):
+        response = self.post_review()
+        risk = Risk.objects.get()
+        self.assertRedirects(response, reverse("assessments:assessment_detail", args=[Assessment.objects.get().pk]))
+        self.assertEqual(risk.process, self.process)
+        self.assertEqual(risk.inherent_score, 12)
+        self.assertEqual(risk.status, Risk.Status.OPEN)
+        self.assertEqual(risk.description, "The second factor was not required.")
+        link = risk.control_links.get()
+        self.assertEqual(link.control, self.control)
+        self.assertEqual(link.effectiveness, RiskControl.Effectiveness.INEFFECTIVE)
+        page = self.client.get(reverse("processes:process_detail", args=[self.process.pk]))
+        self.assertContains(page, risk.risk_id)
+
+    def test_a_later_review_updates_that_risk(self):
+        self.post_review()
+        first = Risk.objects.get()
+        self.post_review(**{
+            "title": "Email review follow-up",
+            "controls-0-outcome": Assessment.Outcome.PARTIAL,
+            "controls-0-findings": "The second factor is only required for remote access.",
+            "controls-0-likelihood": "2",
+            "controls-0-impact": "2",
+            "controls-0-category": "",
+        })
+        self.assertEqual(Risk.objects.count(), 1)
+        first.refresh_from_db()
+        self.assertEqual(first.inherent_score, 4)
+        self.assertEqual(first.description, "The second factor is only required for remote access.")
+        self.assertEqual(
+            first.control_links.get().effectiveness, RiskControl.Effectiveness.PARTIAL
+        )
+
+    def test_satisfactory_does_not_create_or_close_a_risk(self):
+        existing = make_risk(self.category, process=self.process, title="Existing phishing risk")
+        existing.save()
+        RiskControl.objects.create(
+            risk=existing, control=self.control,
+            effectiveness=RiskControl.Effectiveness.EFFECTIVE,
+        )
+        self.post_review(**{
+            "controls-0-outcome": Assessment.Outcome.SATISFACTORY,
+            "controls-0-findings": "The second factor is required.",
+            "controls-0-evidence": "Walkthrough of the sign-in screen.",
+            "controls-0-likelihood": "",
+            "controls-0-impact": "",
+            "controls-0-category": "",
+        })
+        self.assertEqual(Risk.objects.count(), 1)
+        existing.refresh_from_db()
+        self.assertEqual(existing.status, Risk.Status.OPEN)
+        self.assertEqual(existing.title, "Existing phishing risk")
+
+    def test_a_planned_review_does_not_create_a_risk(self):
+        self.post_review(status=Assessment.Status.PLANNED)
+        self.assertFalse(Risk.objects.exists())
+        self.assertEqual(Assessment.objects.get().status, Assessment.Status.PLANNED)
+
+    def test_a_failed_control_needs_scores(self):
+        response = self.post_review(**{
+            "controls-0-likelihood": "",
+            "controls-0-impact": "",
+        })
+        self.assertContains(response, "A risk cannot be saved without both.")
+        self.assertFalse(Risk.objects.exists())
+
+    def test_reassessing_can_close_a_risk_without_changing_its_score(self):
+        existing = make_risk(
+            self.category, process=self.process, title="Existing phishing risk",
+            residual_likelihood=2, residual_impact=2,
+        )
+        existing.save()
+        response = self.post_review(**{
+            "controls-TOTAL_FORMS": "0",
+            "risks-TOTAL_FORMS": "1",
+            "risks-0-risk_id": existing.pk,
+            "risks-0-include": "on",
+            "risks-0-findings": "The exposure has been removed.",
+            "risks-0-evidence": "The mailbox is no longer in use.",
+            "risks-0-likelihood": "",
+            "risks-0-impact": "",
+            "risks-0-close_risk": "on",
+        })
+        self.assertEqual(response.status_code, 302)
+        existing.refresh_from_db()
+        self.assertEqual(existing.status, Risk.Status.CLOSED)
+        self.assertEqual(existing.inherent_score, 12)
+        self.assertEqual(existing.residual_score, 4)
+        self.assertEqual(existing.description, "The exposure has been removed.")

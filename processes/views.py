@@ -40,10 +40,12 @@ def process_detail(request, pk):
     process = get_object_or_404(Process, pk=pk)
     risks = process.risks.select_related("category").order_by("id")
     control_links = process.control_links.select_related("control")
+    assessments = process.assessments.filter(archived_at__isnull=True).order_by("-review_date", "-id")
     return render(request, "processes/process_detail.html", {
         "process": process,
         "risks": risks,
         "control_links": control_links,
+        "assessments": assessments,
     })
 
 
