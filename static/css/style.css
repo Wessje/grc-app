@@ -62,7 +62,59 @@ h2 {
 
 .site-header nav {
     display: flex;
+    align-items: center;
     gap: 16px;
+}
+
+/* Archive in the header opens a short menu. No JavaScript: it is a <details> element. */
+.nav-archive {
+    position: relative;
+}
+
+.nav-archive summary {
+    cursor: pointer;
+    list-style: none;
+}
+
+.nav-archive summary::-webkit-details-marker {
+    display: none;
+}
+
+.archive-menu {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 11rem;
+    margin-top: 8px;
+    padding: 12px;
+    background: #102a43;
+    border: 1px solid #486581;
+}
+
+/* The row of links at the top of each archive page. */
+.section-nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 0 0 16px;
+}
+
+.section-nav a {
+    padding: 6px 12px;
+    background: #fff;
+    border: 1px solid #d9e2ec;
+    color: #102a43;
+    text-decoration: none;
+}
+
+.section-nav a.current {
+    background: #102a43;
+    border-color: #102a43;
+    color: #fff;
 }
 
 .user-menu {
@@ -405,6 +457,69 @@ table.register .nowrap {
 
 .remove-link {
     font-weight: normal;
+}
+
+/* One risk on an assessment: a card you can open, with fields in labelled groups. */
+.risk-card {
+    margin: 12px 0;
+    padding: 0 16px 12px;
+    border: 1px solid #d9e2ec;
+    background: #f8fafc;
+}
+
+.risk-card summary {
+    padding: 12px 0;
+    font-size: 16px;
+    cursor: pointer;
+}
+
+.risk-card .risk-status {
+    margin-left: 8px;
+    color: #52606d;
+    font-weight: normal;
+    font-size: 14px;
+}
+
+.risk-card .assess-tick {
+    display: block;
+    margin: 0 0 4px;
+    font-weight: bold;
+}
+
+.risk-section {
+    margin: 16px 0 8px;
+    padding-top: 8px;
+    border-top: 1px solid #d9e2ec;
+    color: #334e68;
+    font-weight: bold;
+    font-size: 14px;
+}
+
+.risk-fields {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px 20px;
+}
+
+.risk-fields .span-2 {
+    grid-column: 1 / -1;
+}
+
+.risk-card .form-row input[type="text"],
+.risk-card .form-row input[type="date"],
+.risk-card .form-row select,
+.risk-card .form-row textarea {
+    max-width: none;
+}
+
+@media (max-width: 700px) {
+    .risk-fields {
+        grid-template-columns: 1fr;
+    }
+
+    .risk-fields .span-2 {
+        grid-column: auto;
+    }
 }
 
 /* --- Login page --- */

@@ -1,0 +1,50 @@
+{% comment %}
+The register fields on one risk line, in the same groups as the risk form.
+`line` is the form for that risk. Long text spans the card; short fields sit in pairs.
+{% endcomment %}
+<p class="risk-section">This review</p>
+<div class="risk-fields">
+    {% include "assessments/_risk_field.html" with field=line.findings wide=True %}
+    {% include "assessments/_risk_field.html" with field=line.evidence wide=True %}
+</div>
+
+<p class="risk-section">Risk</p>
+<div class="risk-fields">
+    {% include "assessments/_risk_field.html" with field=line.title wide=True %}
+    {% include "assessments/_risk_field.html" with field=line.description wide=True %}
+    {% include "assessments/_risk_field.html" with field=line.category %}
+    {% include "assessments/_risk_field.html" with field=line.owner %}
+    {% include "assessments/_risk_field.html" with field=line.risk_source %}
+    {% include "assessments/_risk_field.html" with field=line.date_identified %}
+</div>
+
+<p class="risk-section">Inherent risk</p>
+<div class="risk-fields">
+    {% include "assessments/_risk_field.html" with field=line.inherent_likelihood %}
+    {% include "assessments/_risk_field.html" with field=line.inherent_impact %}
+</div>
+
+<p class="risk-section">Residual risk (after controls)</p>
+<div class="risk-fields">
+    {% include "assessments/_risk_field.html" with field=line.residual_likelihood %}
+    {% include "assessments/_risk_field.html" with field=line.residual_impact %}
+</div>
+
+<p class="risk-section">Treatment</p>
+<div class="risk-fields">
+    {% include "assessments/_risk_field.html" with field=line.status %}
+    {% include "assessments/_risk_field.html" with field=line.response_type %}
+    {% include "assessments/_risk_field.html" with field=line.response_description wide=True %}
+</div>
+
+<p class="risk-section">Risk acceptance (only when the response type is Accept)</p>
+<div class="risk-fields">
+    {% include "assessments/_risk_field.html" with field=line.accepted_by %}
+    {% include "assessments/_risk_field.html" with field=line.acceptance_date %}
+    {% include "assessments/_risk_field.html" with field=line.acceptance_expiry_date %}
+</div>
+
+<p class="risk-section">Other</p>
+<div class="risk-fields">
+    {% include "assessments/_risk_field.html" with field=line.notes wide=True %}
+</div>

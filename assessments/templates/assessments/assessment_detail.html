@@ -113,7 +113,13 @@ Detail page for one assessment: who reviewed what, and the finding, evidence and
         <tbody>
             {% for line in assessment.risk_reviews.all %}
             <tr>
-                <td><a href="{% url 'risks:risk_detail' line.risk.pk %}">{{ line.risk.risk_id }}</a> {{ line.risk.title }}</td>
+                <td>
+                    {% if line.risk %}
+                        <a href="{% url 'risks:risk_detail' line.risk.pk %}">{{ line.risk.risk_id }}</a> {{ line.risk.title }}
+                    {% else %}
+                        {{ line.title|default:"New risk" }} (not on the register until this assessment is Complete)
+                    {% endif %}
+                </td>
                 <td>{% if line.include %}Yes{% else %}No{% endif %}</td>
                 <td>{{ line.findings|default:"—" }}</td>
                 <td>{% if line.close_risk %}Yes{% else %}No{% endif %}</td>

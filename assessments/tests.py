@@ -14,7 +14,7 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from assessments.models import Assessment
+from assessments.models import AssessedControl, Assessment
 from controls.models import RiskControl
 from controls.tests import make_control, make_risk_for_links
 from processes.models import Process, ProcessControl
@@ -318,6 +318,36 @@ class AssessmentPageTests(TestCase):
         response = self.client.get(reverse("assessments:assessment_detail", args=[9999]))
         self.assertEqual(response.status_code, 404)
 
+    def test_filters_search_and_an_unknown_value_is_ignored(self):
+        process = Process.objects.create(
+            kind=Process.Kind.SOLUTION, name="Email", description="Staff email.", owner="IT manager",
+        )
+        review = make_assessment(
+            title="Email backup check",
+            assessment_type=Assessment.AssessmentType.PROCESS_REVIEW,
+            process=process,
+            control=None,
+            status=Assessment.Status.PLANNED,
+        )
+        review.save()
+        by_type = self.client.get(
+            reverse("assessments:assessment_list"), {"assessment_type": "process_review"}
+        )
+        self.assertContains(by_type, "Email backup check")
+        self.assertNotContains(by_type, "MFA operating check")
+
+        by_subject = self.client.get(reverse("assessments:assessment_list"), {"q": "Email"})
+        self.assertContains(by_subject, "Email backup check")
+        self.assertNotContains(by_subject, "Phishing review")
+
+        planned = self.client.get(reverse("assessments:assessment_list"), {"status": "planned"})
+        self.assertContains(planned, "Phishing review")
+        self.assertNotContains(planned, "MFA operating check")
+
+        unknown = self.client.get(reverse("assessments:assessment_list"), {"status": "nope"})
+        self.assertContains(unknown, "MFA operating check")
+        self.assertContains(unknown, "Email backup check")
+
     def test_readers_do_not_see_new_or_edit(self):
         listing = self.client.get(reverse("assessments:assessment_list"))
         self.assertNotContains(listing, ">New assessment</a>")
@@ -367,33 +397,30 @@ class AssessmentFormPagesTests(TestCase):
         self.assertContains(response, "Please correct the errors below.")
         self.assertFalse(Assessment.objects.exists())
 
+    def test_new_assessment_asks_for_a_process_or_solution(self):
+        page = self.client.get(reverse("assessments:assessment_create"))
+        self.assertContains(page, "Process or solution")
+        self.assertContains(page, "Show controls and risks")
+        self.assertNotContains(page, "A control test names a control.")
+
     def test_risk_review_without_a_risk_is_rejected(self):
+        review = make_assessment(
+            title="Phishing review",
+            assessment_type=Assessment.AssessmentType.RISK_REVIEW,
+            risk=make_risk_for_links(),
+            control=None,
+        )
+        review.save()
         data = assessment_form_data(
-            self.control, assessment_type=Assessment.AssessmentType.RISK_REVIEW
+            self.control, assessment_type=Assessment.AssessmentType.RISK_REVIEW, risk=""
         )
         data["control"] = ""
-        response = self.client.post(reverse("assessments:assessment_create"), data)
+        response = self.client.post(reverse("assessments:assessment_edit", args=[review.pk]), data)
         self.assertContains(response, "Choose the risk this review covers.")
-        self.assertFalse(Assessment.objects.exists())
-
-    def test_create_assigns_an_id_and_shows_on_the_control(self):
-        response = self.client.post(
-            reverse("assessments:assessment_create"),
-            assessment_form_data(self.control),
-            follow=True,
-        )
-        assessment = Assessment.objects.get()
-        self.assertRedirects(
-            response, reverse("assessments:assessment_detail", args=[assessment.pk])
-        )
-        self.assertEqual(assessment.assessment_id, "ASMT-0001")
-        self.assertContains(response, "ASMT-0001 created.")
-        control_page = self.client.get(reverse("controls:control_detail", args=[self.control.pk]))
-        self.assertContains(control_page, "Visitor log check")
 
     def test_completing_an_assessment_needs_an_outcome(self):
-        self.client.post(reverse("assessments:assessment_create"), assessment_form_data(self.control))
-        assessment = Assessment.objects.get()
+        assessment = make_assessment(control=self.control, title="Visitor log check")
+        assessment.save()
         edit_url = reverse("assessments:assessment_edit", args=[assessment.pk])
         rejected = self.client.post(
             edit_url, assessment_form_data(self.control, status=Assessment.Status.COMPLETE)
@@ -530,6 +557,40 @@ class AssessmentArchiveTests(TestCase):
         self.assertNotContains(archive_page, ">Restore</button>")
 
 
+def _risk_post(prefix, risk, **overrides):
+    """
+    Build the register fields for one risk line.
+
+    Inputs: the form prefix (for example "risks-0"), the risk, and any
+    fields to change. Output: a dictionary the test client can post.
+    """
+    data = {
+        f"{prefix}-title": risk.title,
+        f"{prefix}-description": risk.description,
+        f"{prefix}-category": risk.category_id,
+        f"{prefix}-owner": risk.owner,
+        f"{prefix}-risk_source": risk.risk_source,
+        f"{prefix}-date_identified": risk.date_identified.isoformat() if risk.date_identified else "",
+        f"{prefix}-inherent_likelihood": risk.inherent_likelihood,
+        f"{prefix}-inherent_impact": risk.inherent_impact,
+        f"{prefix}-residual_likelihood": risk.residual_likelihood or "",
+        f"{prefix}-residual_impact": risk.residual_impact or "",
+        f"{prefix}-status": risk.status,
+        f"{prefix}-response_type": risk.response_type,
+        f"{prefix}-response_description": risk.response_description,
+        f"{prefix}-accepted_by": risk.accepted_by,
+        f"{prefix}-acceptance_date": risk.acceptance_date.isoformat() if risk.acceptance_date else "",
+        f"{prefix}-acceptance_expiry_date": (
+            risk.acceptance_expiry_date.isoformat() if risk.acceptance_expiry_date else ""
+        ),
+        f"{prefix}-notes": risk.notes,
+        f"{prefix}-findings": "Reviewed.",
+        f"{prefix}-evidence": "Notes from the meeting.",
+    }
+    data.update(overrides)
+    return data
+
+
 class ProcessReviewTests(TestCase):
     """A process review creates, updates or closes risks only as the lines say."""
 
@@ -552,6 +613,8 @@ class ProcessReviewTests(TestCase):
     def post_review(self, **overrides):
         """Post a complete review. Input: fields to change. Output: the response."""
         data = {
+            "process": self.process.pk,
+            "loaded_process": self.process.pk,
             "title": "Email review",
             "review_date": "2026-10-07",
             "reviewer": "Internal audit",
@@ -574,6 +637,10 @@ class ProcessReviewTests(TestCase):
             "risks-INITIAL_FORMS": "0",
             "risks-MIN_NUM_FORMS": "0",
             "risks-MAX_NUM_FORMS": "1000",
+            "new_risks-TOTAL_FORMS": "0",
+            "new_risks-INITIAL_FORMS": "0",
+            "new_risks-MIN_NUM_FORMS": "0",
+            "new_risks-MAX_NUM_FORMS": "1000",
         }
         data.update(overrides)
         return self.client.post(
@@ -661,21 +728,23 @@ class ProcessReviewTests(TestCase):
         existing.save()
         response = self.post_review(**{
             "controls-TOTAL_FORMS": "0",
+            **_risk_post("risks-0", existing),
             "risks-TOTAL_FORMS": "1",
             "risks-0-risk_id": existing.pk,
             "risks-0-include": "on",
             "risks-0-findings": "The exposure has been removed.",
             "risks-0-evidence": "The mailbox is no longer in use.",
-            "risks-0-likelihood": "",
-            "risks-0-impact": "",
-            "risks-0-close_risk": "on",
+            "risks-0-status": Risk.Status.CLOSED,
         })
         self.assertEqual(response.status_code, 302)
         existing.refresh_from_db()
         self.assertEqual(existing.status, Risk.Status.CLOSED)
         self.assertEqual(existing.inherent_score, 12)
         self.assertEqual(existing.residual_score, 4)
-        self.assertEqual(existing.description, "The exposure has been removed.")
+        self.assertEqual(existing.description, "Made-up test risk.")
+        self.assertEqual(
+            existing.changes.filter(field_name="Status").get().new_value, "Closed"
+        )
         risk_page = self.client.get(reverse("risks:risk_detail", args=[existing.pk]))
         self.assertContains(risk_page, "Closed")
         self.assertContains(risk_page, "Email review")
@@ -699,3 +768,89 @@ class ProcessReviewTests(TestCase):
         self.assertNotContains(other_page, "Email review")
         included_page = self.client.get(reverse("controls:control_detail", args=[self.control.pk]))
         self.assertContains(included_page, "Email review")
+
+    def test_new_assessment_lists_every_current_risk_after_the_solution_is_chosen(self):
+        other = make_risk(self.category, process=self.process, title="Lost laptop")
+        other.save()
+        page = self.client.post(reverse("assessments:assessment_create"), {
+            "process": self.process.pk,
+            "title": "Email review",
+            "review_date": "2026-10-07",
+            "reviewer": "Internal audit",
+            "status": Assessment.Status.PLANNED,
+            "show_lines": "1",
+        })
+        self.assertContains(page, self.control.title)
+        self.assertContains(page, "Lost laptop")
+        self.assertContains(page, "Inherent likelihood")
+        self.assertContains(page, "Add another risk")
+        self.assertFalse(Assessment.objects.exists())
+
+    def test_a_ticked_risk_can_be_updated_from_the_assessment(self):
+        existing = make_risk(self.category, process=self.process, title="Existing phishing risk")
+        existing.save()
+        self.post_review(**{
+            "controls-TOTAL_FORMS": "0",
+            "risks-TOTAL_FORMS": "1",
+            **_risk_post(
+                "risks-0", existing,
+                **{
+                    "risks-0-risk_id": existing.pk,
+                    "risks-0-include": "on",
+                    "risks-0-title": "Phishing via email",
+                    "risks-0-owner": "Security lead",
+                },
+            ),
+        })
+        existing.refresh_from_db()
+        self.assertEqual(existing.title, "Phishing via email")
+        self.assertEqual(existing.owner, "Security lead")
+        self.assertEqual(existing.process, self.process)
+        self.assertEqual(
+            existing.changes.filter(field_name="Title").get().new_value, "Phishing via email"
+        )
+
+    def test_a_new_risk_can_be_added_from_the_assessment(self):
+        self.post_review(**{
+            "controls-TOTAL_FORMS": "0",
+            "new_risks-TOTAL_FORMS": "1",
+            **_risk_post(
+                "new_risks-0",
+                make_risk(self.category, process=self.process, title="Unused"),
+                **{
+                    "new_risks-0-title": "Mailbox misconfiguration",
+                    "new_risks-0-description": "Shared mailboxes have no owner.",
+                    "new_risks-0-findings": "No owner is recorded.",
+                    "new_risks-0-evidence": "The mailbox list.",
+                },
+            ),
+        })
+        created = Risk.objects.get(title="Mailbox misconfiguration")
+        self.assertEqual(created.process, self.process)
+        self.assertEqual(created.description, "Shared mailboxes have no owner.")
+        self.assertEqual(created.inherent_score, 12)
+
+    def test_the_list_counts_included_control_outcomes(self):
+        other = make_control(title="Offline backups")
+        other.save()
+        left_out = make_control(title="Visitor log")
+        left_out.save()
+        self.post_review()
+        assessment = Assessment.objects.get()
+        AssessedControl.objects.create(
+            assessment=assessment,
+            control=other,
+            include=True,
+            outcome=Assessment.Outcome.SATISFACTORY,
+            findings="Backups ran.",
+            evidence="The last backup log.",
+        )
+        AssessedControl.objects.create(
+            assessment=assessment,
+            control=left_out,
+            include=False,
+            outcome=Assessment.Outcome.UNSATISFACTORY,
+        )
+        listing = self.client.get(reverse("assessments:assessment_list"))
+        self.assertContains(listing, "1 unsatisfactory, 1 satisfactory")
+        self.assertNotContains(listing, "2 unsatisfactory")

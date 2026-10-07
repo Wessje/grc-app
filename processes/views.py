@@ -15,18 +15,32 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
+from processes.filters import (
+    ProcessFilterForm,
+    column_headings,
+    filter_and_sort_processes,
+    valid_choices,
+)
 from processes.forms import ProcessControlLinkFormSet, ProcessForm
 from processes.models import Process
 
 
 def process_list(request):
     """
-    Show processes and solutions that are not archived.
+    Show processes and solutions that are not archived, filtered and sorted as chosen.
 
-    Input: the web request. Output: the list page.
+    Input: the web request; the choices are in the web address. Output: the
+    list page. By default it shows every non-archived record, sorted by ID.
     """
-    processes = Process.objects.filter(archived_at__isnull=True)
-    return render(request, "processes/process_list.html", {"processes": processes})
+    filter_form = ProcessFilterForm(request.GET)
+    choices = valid_choices(filter_form)
+    processes = filter_and_sort_processes(choices)
+    return render(request, "processes/process_list.html", {
+        "processes": processes,
+        "filter_form": filter_form,
+        "columns": column_headings(request.GET, choices.get("sort")),
+        "is_filtered": any(choices.get(name) for name in ["kind", "q"]),
+    })
 
 
 def process_detail(request, pk):

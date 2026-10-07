@@ -157,6 +157,42 @@ class ProcessPageTests(TestCase):
         self.assertIsNone(process.archived_at)
         self.assertEqual(self.client.get(reverse("processes:process_edit", args=[process.pk])).status_code, 200)
 
+    def test_type_filter_search_and_sort(self):
+        email = make_process(name="Email", kind=Process.Kind.SOLUTION, description="Staff email.")
+        email.save()
+        payroll = make_process(name="Payroll", description="Paying staff each month.")
+        payroll.save()
+
+        solutions = self.client.get(reverse("processes:process_list"), {"kind": "solution"})
+        self.assertContains(solutions, "Email")
+        self.assertNotContains(solutions, "Payroll")
+
+        found = self.client.get(reverse("processes:process_list"), {"q": "Paying staff"})
+        self.assertContains(found, "Payroll")
+        self.assertNotContains(found, "Email")
+
+        unknown = self.client.get(reverse("processes:process_list"), {"kind": "nope"})
+        self.assertContains(unknown, "Email")
+        self.assertContains(unknown, "Payroll")
+
+        by_name = self.client.get(reverse("processes:process_list"), {"sort": "name"})
+        content = by_name.content.decode()
+        self.assertLess(content.index(">Email<"), content.index(">Payroll<"))
+
+    def test_archive_pages_switch_between_every_module(self):
+        page = self.client.get(reverse("processes:archived_process_list"))
+        self.assertContains(page, 'aria-label="Archives"')
+        self.assertContains(
+            page,
+            f'href="{reverse("processes:archived_process_list")}" class="current"',
+        )
+        self.assertContains(page, reverse("risks:archived_risk_list"))
+        self.assertContains(page, reverse("controls:archived_control_list"))
+        self.assertContains(page, reverse("assessments:archived_assessment_list"))
+        listing = self.client.get(reverse("processes:process_list"))
+        self.assertContains(listing, "<summary>Archive</summary>")
+        self.assertContains(listing, reverse("assessments:archived_assessment_list"))
+
     def test_archived_record_cannot_be_edited(self):
         process = make_process(archived_at=timezone.now())
         process.save()

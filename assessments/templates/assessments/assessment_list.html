@@ -10,19 +10,24 @@ The assessment list: reviews that are not archived, newest review date first.
     <h1>Assessments</h1>
     {% if perms.assessments.add_assessment %}<a class="button" href="{% url 'assessments:assessment_create' %}">New assessment</a>{% endif %}
 </div>
-<p class="hint">Reviews of a process or solution, a risk, or a control. Start a process or solution review from that record's page. Archived assessments are not shown. <a href="{% url 'assessments:archived_assessment_list' %}">Archived assessments</a></p>
+<p class="hint">Each new assessment covers one process or solution, and can include several controls and several risks. A process review's outcome counts the controls that were included. Archived assessments are not shown. <a href="{% url 'assessments:archived_assessment_list' %}">Archived assessments</a></p>
+
+<form method="get" class="filter-bar">
+    <label>Type {{ filter_form.assessment_type }}</label>
+    <label>Status {{ filter_form.status }}</label>
+    <label>Search {{ filter_form.q }}</label>
+    {{ filter_form.sort }}
+    <button type="submit" class="button">Apply</button>
+    {% if is_filtered %}<a href="{% url 'assessments:assessment_list' %}">Clear filters</a>{% endif %}
+</form>
 
 {% if assessments %}
 <table class="register">
     <thead>
         <tr>
-            <th>Assessment ID</th>
-            <th>Title</th>
-            <th>Type</th>
-            <th>Subject</th>
-            <th>Review date</th>
-            <th>Status</th>
-            <th>Outcome</th>
+            {% for column in columns %}
+            <th>{% if column.sortable %}<a class="sort-link" href="?{{ column.query }}">{{ column.label }}{% if column.arrow %} {{ column.arrow }}{% endif %}</a>{% else %}{{ column.label }}{% endif %}</th>
+            {% endfor %}
         </tr>
     </thead>
     <tbody>
@@ -47,11 +52,13 @@ The assessment list: reviews that are not archived, newest review date first.
             </td>
             <td class="nowrap">{{ assessment.review_date|date:"j M Y" }}</td>
             <td class="nowrap">{{ assessment.get_status_display }}</td>
-            <td class="nowrap">{{ assessment.get_outcome_display|default:"—" }}</td>
+            <td class="nowrap">{{ assessment.list_outcome }}</td>
         </tr>
         {% endfor %}
     </tbody>
 </table>
+{% elif is_filtered %}
+<p>No assessments match these filters.</p>
 {% else %}
 <p>No assessments yet. Add one with "New assessment".</p>
 {% endif %}

@@ -1,0 +1,10 @@
+{% comment %}
+One labelled field inside a risk card. `field` is the form field.
+`wide` makes it span the full width of the card.
+{% endcomment %}
+<div class="form-row{% if wide %} span-2{% endif %}{% if field.errors %} has-error{% endif %}">
+    <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+    {{ field }}
+    {% if field.help_text %}<p class="help">{{ field.help_text }}</p>{% endif %}
+    {% for error in field.errors %}<p class="error">{{ error }}</p>{% endfor %}
+</div>

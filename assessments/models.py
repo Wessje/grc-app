@@ -21,6 +21,13 @@ from risks.models import IMPACT_CHOICES, LIKELIHOOD_CHOICES
 class Assessment(models.Model):
     """One review of a single risk, or one test of a single control."""
 
+    # Order used when summarising a process review: worst result first.
+    _LINE_OUTCOMES = (
+        ("unsatisfactory", "unsatisfactory"),
+        ("partial", "partially satisfactory"),
+        ("satisfactory", "satisfactory"),
+    )
+
     class AssessmentType(models.TextChoices):
         CONTROL_TEST = "control_test", "Control test"
         RISK_REVIEW = "risk_review", "Risk review"
@@ -88,6 +95,43 @@ class Assessment(models.Model):
 
     def __str__(self):
         return f"{self.assessment_id or 'New assessment'}: {self.title}"
+
+    def list_outcome(self):
+        """
+        The result to show in a list.
+
+        A control test or a risk review uses its own outcome. A process or
+        solution review has no outcome of its own: it counts the control
+        lines that were included, worst first (unsatisfactory, then partial,
+        then satisfactory). A control left out of the review is not counted.
+        When no included control has an outcome yet, the result is a dash.
+
+        Input: this assessment. Output: a short label, for example
+        "Satisfactory" or "1 unsatisfactory, 2 satisfactory".
+        """
+        if self.assessment_type != self.AssessmentType.PROCESS_REVIEW:
+            return self.get_outcome_display() or "—"
+        # The list page counts these in one query (see with_outcome_counts).
+        # Anywhere else, count the lines here.
+        if getattr(self, "unsatisfactory_count", None) is None:
+            counts = {outcome: 0 for outcome, _label in self._LINE_OUTCOMES}
+            for outcome in self.control_results.filter(include=True).exclude(outcome="").values_list(
+                "outcome", flat=True
+            ):
+                if outcome in counts:
+                    counts[outcome] += 1
+        else:
+            counts = {
+                self.Outcome.UNSATISFACTORY: self.unsatisfactory_count,
+                self.Outcome.PARTIAL: self.partial_count,
+                self.Outcome.SATISFACTORY: self.satisfactory_count,
+            }
+        parts = [
+            f"{counts[outcome]} {label}"
+            for outcome, label in self._LINE_OUTCOMES
+            if counts[outcome]
+        ]
+        return ", ".join(parts) if parts else "—"
 
     def clean(self):
         """
@@ -229,36 +273,64 @@ class AssessedControl(models.Model):
 
 class AssessedRisk(models.Model):
     """
-    One existing risk reassessed inside a process or solution review.
+    One risk on a process or solution review.
 
-    Including the risk records a new finding. Scores are updated only when
-    both likelihood and impact are filled in. The risk is closed only when
-    close_risk is ticked. A satisfactory control test never closes a risk
-    by itself.
+    `risk` is empty when this line is a new risk that has not been written
+    to the register yet (the review is still Planned). The other fields are
+    the same ones used when registering a risk, so the review can add a risk
+    or update one. Likelihood and impact here are the inherent scores.
+    `close_risk` is set when the status on this line is Closed. A
+    satisfactory control test never closes a risk by itself.
     """
 
     assessment = models.ForeignKey(
         Assessment, on_delete=models.CASCADE, related_name="risk_reviews"
     )
     risk = models.ForeignKey(
-        "risks.Risk", on_delete=models.PROTECT, related_name="reassessments"
+        "risks.Risk",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="reassessments",
     )
     include = models.BooleanField(
         default=False,
-        help_text="Tick to reassess this risk in this review.",
+        help_text="Tick to assess this risk in this review.",
     )
     findings = models.TextField(blank=True)
     evidence = models.TextField(blank=True)
+    # Inherent scores. Kept under these names so earlier reviews still load.
     likelihood = models.PositiveSmallIntegerField(
         choices=LIKELIHOOD_CHOICES, null=True, blank=True
     )
     impact = models.PositiveSmallIntegerField(
         choices=IMPACT_CHOICES, null=True, blank=True
     )
+    title = models.CharField(max_length=200, blank=True)
+    description = models.TextField(blank=True)
+    category = models.ForeignKey(
+        "risks.RiskCategory", null=True, blank=True, on_delete=models.PROTECT
+    )
+    owner = models.CharField(max_length=200, blank=True)
+    risk_source = models.CharField(max_length=200, blank=True)
+    date_identified = models.DateField(null=True, blank=True)
+    residual_likelihood = models.PositiveSmallIntegerField(
+        choices=LIKELIHOOD_CHOICES, null=True, blank=True
+    )
+    residual_impact = models.PositiveSmallIntegerField(
+        choices=IMPACT_CHOICES, null=True, blank=True
+    )
+    risk_status = models.CharField(max_length=20, blank=True)
+    response_type = models.CharField(max_length=20, blank=True)
+    response_description = models.TextField(blank=True)
+    accepted_by = models.CharField(max_length=200, blank=True)
+    acceptance_date = models.DateField(null=True, blank=True)
+    acceptance_expiry_date = models.DateField(null=True, blank=True)
+    notes = models.TextField(blank=True)
     close_risk = models.BooleanField(
         "close this risk",
         default=False,
-        help_text="Tick only when this risk should be closed.",
+        help_text="Set when the status on this line is Closed.",
     )
 
     class Meta:
@@ -270,4 +342,6 @@ class AssessedRisk(models.Model):
         ]
 
     def __str__(self):
-        return f"{self.risk} in {self.assessment}"
+        if self.risk_id:
+            return f"{self.risk} in {self.assessment}"
+        return f"{self.title or 'New risk'} in {self.assessment}"

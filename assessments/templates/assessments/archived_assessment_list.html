@@ -7,7 +7,8 @@ Archived assessments, each with a Restore button for people who may change them.
 
 {% block content %}
 <h1>Archived assessments</h1>
-<p class="hint">Archived assessments are kept and stay read-only. Restore one to bring it back. <a href="{% url 'risks:archived_risk_list' %}">Archived risks</a> · <a href="{% url 'controls:archived_control_list' %}">Archived controls</a></p>
+{% include "archive_nav.html" with section="assessments" %}
+<p class="hint">Archived assessments are kept and stay read-only. Restore one to bring it back.</p>
 
 {% if assessments %}
 <table class="register">
@@ -29,7 +30,7 @@ Archived assessments, each with a Restore button for people who may change them.
             <td><a href="{% url 'assessments:assessment_detail' assessment.pk %}">{{ assessment.title }}</a></td>
             <td class="nowrap">{{ assessment.get_assessment_type_display }}</td>
             <td class="nowrap">{{ assessment.review_date|date:"j M Y" }}</td>
-            <td class="nowrap">{{ assessment.get_outcome_display|default:"—" }}</td>
+            <td class="nowrap">{{ assessment.list_outcome }}</td>
             <td class="nowrap">{{ assessment.archived_at|date:"j M Y" }}</td>
             {% if perms.assessments.change_assessment %}
             <td>

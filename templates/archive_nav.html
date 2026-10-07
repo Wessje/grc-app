@@ -1,0 +1,10 @@
+{% comment %}
+The switcher at the top of every archive page. `section` is one of
+risks, controls, assessments or processes, and that link is marked current.
+{% endcomment %}
+<nav class="section-nav" aria-label="Archives">
+    <a href="{% url 'risks:archived_risk_list' %}"{% if section == "risks" %} class="current" aria-current="page"{% endif %}>Risks</a>
+    <a href="{% url 'controls:archived_control_list' %}"{% if section == "controls" %} class="current" aria-current="page"{% endif %}>Controls</a>
+    <a href="{% url 'assessments:archived_assessment_list' %}"{% if section == "assessments" %} class="current" aria-current="page"{% endif %}>Assessments</a>
+    <a href="{% url 'processes:archived_process_list' %}"{% if section == "processes" %} class="current" aria-current="page"{% endif %}>Processes</a>
+</nav>

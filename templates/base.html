@@ -20,7 +20,15 @@ Pages fill in the "title" and "content" blocks.
                 <a href="{% url 'controls:control_list' %}">Controls</a>
                 <a href="{% url 'assessments:assessment_list' %}">Assessments</a>
                 <a href="{% url 'processes:process_list' %}">Processes</a>
-                <a href="{% url 'risks:archived_risk_list' %}">Archive</a>
+                <details class="nav-archive">
+                    <summary>Archive</summary>
+                    <div class="archive-menu">
+                        <a href="{% url 'risks:archived_risk_list' %}">Risks</a>
+                        <a href="{% url 'controls:archived_control_list' %}">Controls</a>
+                        <a href="{% url 'assessments:archived_assessment_list' %}">Assessments</a>
+                        <a href="{% url 'processes:archived_process_list' %}">Processes</a>
+                    </div>
+                </details>
                 {% if user.is_staff %}<a href="{% url 'admin:index' %}">Admin</a>{% endif %}
             </nav>
             <div class="user-menu">

@@ -10,16 +10,23 @@ Processes and solutions that are not archived.
     <h1>Processes and solutions</h1>
     {% if perms.processes.add_process %}<a class="button" href="{% url 'processes:process_create' %}">New process or solution</a>{% endif %}
 </div>
-<p class="hint">A business process or a solution you run. Each risk will belong to one of these. Archived ones are not shown. <a href="{% url 'processes:archived_process_list' %}">Archived processes</a></p>
+<p class="hint">A business process or a solution you run. Each risk belongs to one of these. Archived ones are not shown. <a href="{% url 'processes:archived_process_list' %}">Archived processes</a></p>
+
+<form method="get" class="filter-bar">
+    <label>Type {{ filter_form.kind }}</label>
+    <label>Search {{ filter_form.q }}</label>
+    {{ filter_form.sort }}
+    <button type="submit" class="button">Apply</button>
+    {% if is_filtered %}<a href="{% url 'processes:process_list' %}">Clear filters</a>{% endif %}
+</form>
 
 {% if processes %}
 <table class="register">
     <thead>
         <tr>
-            <th>ID</th>
-            <th>Name</th>
-            <th>Type</th>
-            <th>Owner</th>
+            {% for column in columns %}
+            <th><a class="sort-link" href="?{{ column.query }}">{{ column.label }}{% if column.arrow %} {{ column.arrow }}{% endif %}</a></th>
+            {% endfor %}
         </tr>
     </thead>
     <tbody>
@@ -33,6 +40,8 @@ Processes and solutions that are not archived.
         {% endfor %}
     </tbody>
 </table>
+{% elif is_filtered %}
+<p>No processes or solutions match these filters.</p>
 {% else %}
 <p>No processes or solutions yet. Add one with "New process or solution".</p>
 {% endif %}

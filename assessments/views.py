@@ -17,12 +17,21 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from assessments.effects import apply_completed_review, save_review_lines
+from assessments.filters import (
+    AssessmentFilterForm,
+    column_headings,
+    filter_and_sort_assessments,
+    valid_choices,
+    with_outcome_counts,
+)
 from assessments.forms import (
     AssessmentForm,
     ControlLineFormSet,
+    NewRiskFormSet,
     ProcessReviewForm,
     RiskLineFormSet,
     control_line_initial,
+    new_risk_initial,
     risk_line_initial,
 )
 from assessments.models import Assessment
@@ -33,16 +42,21 @@ from risks.models import Risk
 
 def assessment_list(request):
     """
-    Show assessments that are not archived, newest review date first.
+    Show assessments that are not archived, filtered and sorted as chosen.
 
-    Input: the web request. Output: the list page.
+    Input: the web request; the choices are in the web address. Output: the
+    list page. By default it shows every non-archived assessment, newest
+    review date first.
     """
-    assessments = (
-        Assessment.objects.filter(archived_at__isnull=True)
-        .select_related("risk", "control", "process")
-        .order_by("-review_date", "-id")
-    )
-    return render(request, "assessments/assessment_list.html", {"assessments": assessments})
+    filter_form = AssessmentFilterForm(request.GET)
+    choices = valid_choices(filter_form)
+    assessments = filter_and_sort_assessments(choices)
+    return render(request, "assessments/assessment_list.html", {
+        "assessments": assessments,
+        "filter_form": filter_form,
+        "columns": column_headings(request.GET, choices.get("sort")),
+        "is_filtered": any(choices.get(name) for name in ["assessment_type", "status", "q"]),
+    })
 
 
 def assessment_detail(request, pk):
@@ -65,22 +79,15 @@ def assessment_detail(request, pk):
 @permission_required("assessments.add_assessment", raise_exception=True)
 def assessment_create(request):
     """
-    Show the "New assessment" form, and save it once it passes validation.
+    Start an assessment by choosing the process or solution it covers.
 
-    Input: the web request (a blank form on first visit; the filled-in form
-    when submitted). Output: the form again with error messages, or – on
-    success – a redirect to the new assessment's detail page. The Assessment
-    ID is assigned automatically on save.
+    Input: the web request. Output: the review form. The controls in scope
+    and the current risks appear once a process or solution is chosen.
+    Saving as Complete adds or updates those risks. An assessment that
+    already names a single risk or a single control is still edited on its
+    own form.
     """
-    if request.method == "POST":
-        form = AssessmentForm(request.POST)
-        if form.is_valid():
-            assessment = form.save()
-            messages.success(request, f"{assessment.assessment_id} created.")
-            return redirect("assessments:assessment_detail", pk=assessment.pk)
-    else:
-        form = AssessmentForm()
-    return render(request, "assessments/assessment_form.html", {"form": form, "assessment": None})
+    return _save_process_review(request, process=None, assessment=None)
 
 
 @permission_required("assessments.change_assessment", raise_exception=True)
@@ -131,44 +138,77 @@ def _save_process_review(request, process, assessment):
     """
     Show the process review form, and save it once every line passes.
 
-    Inputs: the web request, the process, and the assessment being edited
+    Inputs: the web request, the process when the review was opened from
+    that record (None from New assessment), and the assessment being edited
     (None when creating). Output: the form again with errors, or a redirect
-    to the assessment. When the status is Complete, risks are created,
-    updated or closed as the lines say.
+    to the assessment. Choosing a different process or solution reloads the
+    controls and risks instead of saving. When the status is Complete, risks
+    are created or updated as the lines say.
     """
     creating = assessment is None
+    if process is None and assessment is not None:
+        process = assessment.process
     if request.method == "POST":
-        status = request.POST.get("status", Assessment.Status.PLANNED)
-        # The type and process have to be set before the form checks the
-        # rules, so a process review is not treated as a single control test.
-        if creating:
-            assessment = Assessment(
-                assessment_type=Assessment.AssessmentType.PROCESS_REVIEW,
-                process=process,
+        posted_process = _posted_process(request)
+        # The type has to be set before the form checks the rules, so a
+        # process review is not treated as a single control test.
+        draft = assessment if assessment is not None else Assessment(
+            assessment_type=Assessment.AssessmentType.PROCESS_REVIEW
+        )
+        draft.assessment_type = Assessment.AssessmentType.PROCESS_REVIEW
+        if posted_process is not None:
+            draft.process = posted_process
+        reason = _reload_reason(request, posted_process)
+        if reason:
+            header = ProcessReviewForm(request.POST, instance=draft)
+            header.is_valid()
+            if reason == "show" and posted_process is not None and request.POST.get("loaded_process"):
+                messages.info(
+                    request,
+                    f"Controls and risks are now for {posted_process.name}. Save to keep them on this assessment.",
+                )
+            return _render_process_review(
+                request, header, posted_process, assessment,
+                bind_posted_lines=(reason == "add"),
             )
-        header = ProcessReviewForm(request.POST, instance=assessment)
+        status = request.POST.get("status", Assessment.Status.PLANNED)
+        review_date = request.POST.get("review_date") or None
+        line_kwargs = {
+            "process": posted_process,
+            "assessment_status": status,
+            "review_date": review_date,
+        }
+        header = ProcessReviewForm(request.POST, instance=draft)
         control_formset = ControlLineFormSet(
             request.POST,
             prefix="controls",
             form_kwargs={
-                "process": process,
-                "assessment": assessment,
+                "process": posted_process,
+                "assessment": draft,
                 "assessment_status": status,
             },
         )
         risk_formset = RiskLineFormSet(
-            request.POST,
-            prefix="risks",
-            form_kwargs={"process": process, "assessment_status": status},
+            request.POST, prefix="risks", form_kwargs=line_kwargs
         )
-        if header.is_valid() and control_formset.is_valid() and risk_formset.is_valid():
-            included = control_formset.included_count + risk_formset.included_count
+        new_risk_formset = NewRiskFormSet(
+            request.POST, prefix="new_risks", form_kwargs=line_kwargs
+        )
+        formsets_valid = (
+            control_formset.is_valid() and risk_formset.is_valid() and new_risk_formset.is_valid()
+        )
+        if header.is_valid() and formsets_valid:
+            included = (
+                control_formset.included_count
+                + risk_formset.included_count
+                + new_risk_formset.included_count
+            )
             if header.cleaned_data["status"] == Assessment.Status.COMPLETE and included == 0:
                 header.add_error(None, "Include at least one control or one risk.")
             else:
                 try:
                     saved = _store_process_review(
-                        header, control_formset, risk_formset, process, request.user
+                        header, control_formset, risk_formset, new_risk_formset, request.user
                     )
                 except ValidationError:
                     header.add_error(
@@ -179,41 +219,117 @@ def _save_process_review(request, process, assessment):
                     verb = "created" if creating else "updated"
                     messages.success(request, f"{saved.assessment_id} {verb}.")
                     return redirect("assessments:assessment_detail", pk=saved.pk)
-    else:
-        header = ProcessReviewForm(instance=assessment)
-        control_formset = ControlLineFormSet(
-            prefix="controls",
-            initial=control_line_initial(process, assessment),
-            form_kwargs={"process": process, "assessment": assessment},
+        return _render_process_review(
+            request, header, posted_process, assessment,
+            control_formset=control_formset,
+            risk_formset=risk_formset,
+            new_risk_formset=new_risk_formset,
         )
-        risk_formset = RiskLineFormSet(
-            prefix="risks",
-            initial=risk_line_initial(process, assessment),
-            form_kwargs={"process": process},
-        )
+    header = ProcessReviewForm(
+        instance=assessment,
+        initial={"process": process.pk} if process is not None and assessment is None else None,
+    )
+    return _render_process_review(request, header, process, assessment, bind_posted_lines=False)
+
+
+def _posted_process(request):
+    """
+    Return the process or solution chosen on the form, or None.
+
+    Input: the web request. Output: the Process, or None when the choice is
+    missing or not a real record. An archived record is not accepted for a
+    new choice; the form's own list enforces that for a normal save.
+    """
+    raw = request.POST.get("process")
+    if not raw:
+        return None
+    return Process.objects.filter(pk=raw).first()
+
+
+def _reload_reason(request, posted_process):
+    """
+    Decide whether this submission should reload the lines instead of saving.
+
+    Input: the web request and the chosen process. Output: "add" to keep the
+    posted lines and add a blank risk, "show" to load the controls and risks
+    for the chosen process, or "" when the submission should be saved.
+    """
+    if "add_risk" in request.POST:
+        return "add"
+    loaded = request.POST.get("loaded_process") or ""
+    if "show_lines" in request.POST or not loaded:
+        return "show"
+    if posted_process is None or str(posted_process.pk) != loaded:
+        return "show"
+    return ""
+
+
+def _render_process_review(
+    request, header, process, assessment, bind_posted_lines=False,
+    control_formset=None, risk_formset=None, new_risk_formset=None,
+):
+    """
+    Render the process review page.
+
+    Inputs: the request, the header form, the process whose lines to show
+    (None when none is chosen yet), and the assessment being edited.
+    When the formsets are passed in, those are shown (a failed save).
+    Otherwise they are built for the process. Output: the HTML response.
+    """
+    lines_loaded = process is not None
+    same_process = (
+        assessment is not None and assessment.pk and process is not None
+        and assessment.process_id == process.pk
+    )
+    saved_for_lines = assessment if same_process else None
+    if lines_loaded and control_formset is None:
+        if bind_posted_lines:
+            posted = request.POST.copy()
+            total = int(posted.get("new_risks-TOTAL_FORMS") or 0)
+            posted["new_risks-TOTAL_FORMS"] = str(total + 1)
+            control_formset = ControlLineFormSet(posted, prefix="controls", form_kwargs={"process": process})
+            risk_formset = RiskLineFormSet(posted, prefix="risks", form_kwargs={"process": process})
+            new_risk_formset = NewRiskFormSet(posted, prefix="new_risks", form_kwargs={"process": process})
+        else:
+            control_formset = ControlLineFormSet(
+                prefix="controls",
+                initial=control_line_initial(process, saved_for_lines),
+                form_kwargs={"process": process},
+            )
+            risk_formset = RiskLineFormSet(
+                prefix="risks",
+                initial=risk_line_initial(process, saved_for_lines),
+                form_kwargs={"process": process},
+            )
+            new_risk_formset = NewRiskFormSet(
+                prefix="new_risks",
+                initial=new_risk_initial(process, saved_for_lines),
+                form_kwargs={"process": process},
+            )
     return render(request, "assessments/process_review_form.html", {
         "form": header,
         "process": process,
-        "assessment": assessment,
+        "assessment": assessment if assessment is not None and assessment.pk else None,
+        "lines_loaded": lines_loaded,
         "control_formset": control_formset,
         "risk_formset": risk_formset,
-        "control_rows": _rows_with_subjects(control_formset, "control_id", Control),
-        "risk_rows": _rows_with_subjects(risk_formset, "risk_id", Risk),
+        "new_risk_formset": new_risk_formset,
+        "control_rows": _rows_with_subjects(control_formset, "control_id", Control) if control_formset else [],
+        "risk_rows": _rows_with_subjects(risk_formset, "risk_id", Risk) if risk_formset else [],
     })
 
 
-def _store_process_review(header, control_formset, risk_formset, process, user):
+def _store_process_review(header, control_formset, risk_formset, new_risk_formset, user):
     """
     Save the review and apply it to the register when it is Complete.
 
-    Inputs: the valid header form, the two valid line formsets, the process
-    and the logged-in user. Output: the saved assessment. If applying a line
-    fails, nothing from this save is kept.
+    Inputs: the valid header form, the three valid line formsets and the
+    logged-in user. Output: the saved assessment. The process is the one
+    chosen on the form. If applying a line fails, nothing from this save is kept.
     """
     with transaction.atomic():
         assessment = header.save(commit=False)
         assessment.assessment_type = Assessment.AssessmentType.PROCESS_REVIEW
-        assessment.process = process
         assessment.risk = None
         assessment.control = None
         assessment.outcome = ""
@@ -222,8 +338,9 @@ def _store_process_review(header, control_formset, risk_formset, process, user):
         assessment.save()
         save_review_lines(
             assessment,
-            control_formset.cleaned_data,
-            risk_formset.cleaned_data,
+            [row for row in control_formset.cleaned_data if row],
+            [row for row in risk_formset.cleaned_data if row],
+            [row for row in new_risk_formset.cleaned_data if row],
         )
         apply_completed_review(assessment, user)
     return assessment
@@ -276,7 +393,7 @@ def archived_assessment_list(request):
 
     Input: the web request. Output: the archive page.
     """
-    assessments = (
+    assessments = with_outcome_counts(
         Assessment.objects.filter(archived_at__isnull=False)
         .select_related("risk", "control", "process")
         .order_by("-archived_at")
