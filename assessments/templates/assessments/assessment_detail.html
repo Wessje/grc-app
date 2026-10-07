@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% comment %}
+Detail page for one assessment: who reviewed what, and the finding, evidence and outcome.
+{% endcomment %}
+
+{% block title %}{{ assessment.assessment_id }}{% endblock %}
+
+{% block content %}
+<p><a href="{% url 'assessments:assessment_list' %}">← Back to assessments</a></p>
+
+<h1>{{ assessment.assessment_id }}: {{ assessment.title }}</h1>
+
+{% if assessment.archived_at %}
+    <p class="notice">Archived on {{ assessment.archived_at }}. This assessment is read-only.</p>
+{% endif %}
+
+<section class="details">
+    <h2>Review</h2>
+    <dl>
+        <dt>Type</dt><dd>{{ assessment.get_assessment_type_display }}</dd>
+        <dt>Subject</dt>
+        <dd>
+            {% if assessment.control %}
+                <a href="{% url 'controls:control_detail' assessment.control.pk %}">{{ assessment.control.control_id }}: {{ assessment.control.title }}</a>
+            {% elif assessment.risk %}
+                <a href="{% url 'risks:risk_detail' assessment.risk.pk %}">{{ assessment.risk.risk_id }}: {{ assessment.risk.title }}</a>
+            {% else %}
+                —
+            {% endif %}
+        </dd>
+        <dt>Review date</dt><dd>{{ assessment.review_date|date:"j M Y" }}</dd>
+        <dt>Reviewer</dt><dd>{{ assessment.reviewer }}</dd>
+        <dt>Status</dt><dd>{{ assessment.get_status_display }}</dd>
+        <dt>Outcome</dt><dd>{{ assessment.get_outcome_display|default:"—" }}</dd>
+        <dt>Findings</dt><dd class="multiline">{{ assessment.findings|default:"—" }}</dd>
+        <dt>Evidence</dt><dd class="multiline">{{ assessment.evidence|default:"—" }}</dd>
+        <dt>Next review date</dt><dd>{{ assessment.next_review_date|date:"j M Y"|default:"—" }}</dd>
+        <dt>Notes</dt><dd class="multiline">{{ assessment.notes|default:"—" }}</dd>
+    </dl>
+</section>
+{% endblock %}

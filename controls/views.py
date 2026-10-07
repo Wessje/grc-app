@@ -55,10 +55,12 @@ def control_detail(request, pk):
     control = get_object_or_404(Control, pk=pk)
     risk_links = control.risk_links.select_related("risk", "risk__category")
     requirement_links = control.requirement_links.select_related("requirement")
+    assessments = control.assessments.filter(archived_at__isnull=True).order_by("-review_date", "-id")
     return render(request, "controls/control_detail.html", {
         "control": control,
         "risk_links": risk_links,
         "requirement_links": requirement_links,
+        "assessments": assessments,
     })
 
 

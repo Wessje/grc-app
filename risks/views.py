@@ -50,7 +50,7 @@ def risk_list(request):
 
 def risk_detail(request, pk):
     """
-    Show all fields of one risk and its change history, newest first.
+    Show all fields of one risk, its change history, and its reviews.
 
     Inputs: the web request and the risk's record number.
     Output: the detail page, or a "not found" page if no such risk exists.
@@ -59,10 +59,12 @@ def risk_detail(request, pk):
     risk = get_object_or_404(Risk.objects.select_related("category"), pk=pk)
     changes = risk.changes.select_related("changed_by")
     control_links = risk.control_links.select_related("control")
+    assessments = risk.assessments.filter(archived_at__isnull=True).order_by("-review_date", "-id")
     return render(request, "risks/risk_detail.html", {
         "risk": risk,
         "changes": changes,
         "control_links": control_links,
+        "assessments": assessments,
     })
 
 

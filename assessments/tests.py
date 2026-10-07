@@ -248,3 +248,68 @@ class AssessmentAdminTests(TestCase):
         )
         self.assertEqual(response.status_code, 403)
         self.assertTrue(Assessment.objects.filter(pk=assessment.pk).exists())
+
+
+class AssessmentPageTests(TestCase):
+    """The assessment list and detail pages, and the rows on a risk or control."""
+
+    def setUp(self):
+        user = get_user_model().objects.create_user(username="w", password="test-password-123")
+        self.client.force_login(user)
+        self.risk = make_risk_for_links()
+        self.control = make_control()
+        self.control.save()
+        self.test = make_assessment(
+            control=self.control,
+            status=Assessment.Status.COMPLETE,
+            outcome=Assessment.Outcome.SATISFACTORY,
+            findings="The second factor is required for email.",
+            evidence="Walkthrough of the email sign-in screen.",
+        )
+        self.test.save()
+        self.review = make_assessment(
+            title="Phishing review",
+            assessment_type=Assessment.AssessmentType.RISK_REVIEW,
+            risk=self.risk,
+            control=None,
+        )
+        self.review.save()
+
+    def test_logged_out_visitors_are_sent_to_login(self):
+        self.client.logout()
+        url = reverse("assessments:assessment_list")
+        response = self.client.get(url)
+        self.assertRedirects(response, f"{reverse('login')}?next={url}")
+
+    def test_list_shows_active_assessments_and_hides_archived_ones(self):
+        archived = make_assessment(title="Old review", control=self.control, archived_at=timezone.now())
+        archived.save()
+        response = self.client.get(reverse("assessments:assessment_list"))
+        self.assertContains(response, "ASMT-0001")
+        self.assertContains(response, "MFA operating check")
+        self.assertContains(response, "Satisfactory")
+        self.assertContains(response, self.control.control_id)
+        self.assertContains(response, "Phishing review")
+        self.assertContains(response, self.risk.risk_id)
+        self.assertNotContains(response, "Old review")
+
+    def test_detail_shows_the_finding_and_links_to_the_control(self):
+        response = self.client.get(reverse("assessments:assessment_detail", args=[self.test.pk]))
+        self.assertContains(response, "The second factor is required for email.")
+        self.assertContains(response, "Walkthrough of the email sign-in screen.")
+        self.assertContains(response, "Internal audit")
+        control_url = reverse("controls:control_detail", args=[self.control.pk])
+        self.assertContains(response, f'href="{control_url}"')
+
+    def test_control_page_lists_its_tests_and_risk_page_lists_its_reviews(self):
+        control_page = self.client.get(reverse("controls:control_detail", args=[self.control.pk]))
+        self.assertContains(control_page, "MFA operating check")
+        self.assertNotContains(control_page, "Phishing review")
+
+        risk_page = self.client.get(reverse("risks:risk_detail", args=[self.risk.pk]))
+        self.assertContains(risk_page, "Phishing review")
+        self.assertNotContains(risk_page, "MFA operating check")
+
+    def test_unknown_assessment_is_not_found(self):
+        response = self.client.get(reverse("assessments:assessment_detail", args=[9999]))
+        self.assertEqual(response.status_code, 404)

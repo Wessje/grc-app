@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% comment %}
+The assessment list: reviews that are not archived, newest review date first.
+{% endcomment %}
+
+{% block title %}Assessments{% endblock %}
+
+{% block content %}
+<h1>Assessments</h1>
+<p class="hint">Periodic reviews of a risk, or tests of a control. Add or edit them in the admin screen. Archived assessments are not shown.</p>
+
+{% if assessments %}
+<table class="register">
+    <thead>
+        <tr>
+            <th>Assessment ID</th>
+            <th>Title</th>
+            <th>Type</th>
+            <th>Subject</th>
+            <th>Review date</th>
+            <th>Status</th>
+            <th>Outcome</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for assessment in assessments %}
+        <tr>
+            <td class="nowrap"><a href="{% url 'assessments:assessment_detail' assessment.pk %}">{{ assessment.assessment_id }}</a></td>
+            <td><a href="{% url 'assessments:assessment_detail' assessment.pk %}">{{ assessment.title }}</a></td>
+            <td class="nowrap">{{ assessment.get_assessment_type_display }}</td>
+            <td>
+                {% if assessment.control %}
+                    <a href="{% url 'controls:control_detail' assessment.control.pk %}">{{ assessment.control.control_id }}</a>
+                    {{ assessment.control.title }}
+                {% elif assessment.risk %}
+                    <a href="{% url 'risks:risk_detail' assessment.risk.pk %}">{{ assessment.risk.risk_id }}</a>
+                    {{ assessment.risk.title }}
+                {% else %}
+                    —
+                {% endif %}
+            </td>
+            <td class="nowrap">{{ assessment.review_date|date:"j M Y" }}</td>
+            <td class="nowrap">{{ assessment.get_status_display }}</td>
+            <td class="nowrap">{{ assessment.get_outcome_display|default:"—" }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p>No assessments yet. Add them in the admin screen.</p>
+{% endif %}
+{% endblock %}
