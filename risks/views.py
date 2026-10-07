@@ -13,6 +13,7 @@ from django.core.exceptions import PermissionDenied
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
+from assessments.reviews import reviews_for_risk
 from controls.forms import RiskControlLinkFormSet
 from controls.links import record_control_link_changes, snapshot_control_links
 from risks.filters import (
@@ -63,7 +64,7 @@ def risk_detail(request, pk):
     risk = get_object_or_404(Risk.objects.select_related("category", "process"), pk=pk)
     changes = risk.changes.select_related("changed_by")
     control_links = risk.control_links.select_related("control")
-    assessments = risk.assessments.filter(archived_at__isnull=True).order_by("-review_date", "-id")
+    assessments = reviews_for_risk(risk)
     return render(request, "risks/risk_detail.html", {
         "risk": risk,
         "changes": changes,

@@ -17,6 +17,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from controls.filters import ControlFilterForm, selected_framework
+from assessments.reviews import reviews_for_control
 from controls.forms import ControlForm
 from controls.models import Control
 
@@ -47,7 +48,7 @@ def control_list(request):
 def control_detail(request, pk):
     """
     Show one control, the risks it addresses, the processes it is in scope
-    for, and the framework requirements it maps to.
+    for, the reviews that tested it, and the framework requirements it maps to.
 
     Inputs: the web request and the control's record number.
     Output: the detail page, or a "not found" page if no such control exists.
@@ -57,7 +58,7 @@ def control_detail(request, pk):
     risk_links = control.risk_links.select_related("risk", "risk__category")
     process_links = control.process_links.select_related("process")
     requirement_links = control.requirement_links.select_related("requirement")
-    assessments = control.assessments.filter(archived_at__isnull=True).order_by("-review_date", "-id")
+    assessments = reviews_for_control(control)
     return render(request, "controls/control_detail.html", {
         "control": control,
         "risk_links": risk_links,

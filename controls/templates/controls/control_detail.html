@@ -120,19 +120,19 @@ framework requirements it is mapped to.
             </tr>
         </thead>
         <tbody>
-            {% for assessment in assessments %}
+            {% for row in assessments %}
             <tr>
-                <td class="nowrap"><a href="{% url 'assessments:assessment_detail' assessment.pk %}">{{ assessment.assessment_id }}</a></td>
-                <td><a href="{% url 'assessments:assessment_detail' assessment.pk %}">{{ assessment.title }}</a></td>
-                <td class="nowrap">{{ assessment.review_date|date:"j M Y" }}</td>
-                <td class="nowrap">{{ assessment.get_status_display }}</td>
-                <td class="nowrap">{{ assessment.get_outcome_display|default:"—" }}</td>
+                <td class="nowrap"><a href="{% url 'assessments:assessment_detail' row.assessment.pk %}">{{ row.assessment.assessment_id }}</a></td>
+                <td><a href="{% url 'assessments:assessment_detail' row.assessment.pk %}">{{ row.assessment.title }}</a></td>
+                <td class="nowrap">{{ row.assessment.review_date|date:"j M Y" }}</td>
+                <td class="nowrap">{{ row.assessment.get_status_display }}</td>
+                <td class="nowrap">{{ row.outcome }}</td>
             </tr>
             {% endfor %}
         </tbody>
     </table>
     {% else %}
-    <p class="hint">No control tests yet. Add them in the admin screen.</p>
+    <p class="hint">No tests yet. Start one from a process or solution that has this control in scope.</p>
     {% endif %}
 </section>
 

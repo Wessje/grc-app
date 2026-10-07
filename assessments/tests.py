@@ -593,6 +593,13 @@ class ProcessReviewTests(TestCase):
         self.assertEqual(link.effectiveness, RiskControl.Effectiveness.INEFFECTIVE)
         page = self.client.get(reverse("processes:process_detail", args=[self.process.pk]))
         self.assertContains(page, risk.risk_id)
+        assessment = Assessment.objects.get()
+        risk_page = self.client.get(reverse("risks:risk_detail", args=[risk.pk]))
+        self.assertContains(risk_page, assessment.assessment_id)
+        self.assertContains(risk_page, "Unsatisfactory")
+        control_page = self.client.get(reverse("controls:control_detail", args=[self.control.pk]))
+        self.assertContains(control_page, assessment.assessment_id)
+        self.assertContains(control_page, "Unsatisfactory")
 
     def test_a_later_review_updates_that_risk(self):
         self.post_review()
@@ -669,3 +676,26 @@ class ProcessReviewTests(TestCase):
         self.assertEqual(existing.inherent_score, 12)
         self.assertEqual(existing.residual_score, 4)
         self.assertEqual(existing.description, "The exposure has been removed.")
+        risk_page = self.client.get(reverse("risks:risk_detail", args=[existing.pk]))
+        self.assertContains(risk_page, "Closed")
+        self.assertContains(risk_page, "Email review")
+
+    def test_a_control_left_out_is_not_shown_on_its_page(self):
+        other = make_control(title="Offline backups")
+        other.save()
+        ProcessControl.objects.create(process=self.process, control=other)
+        self.post_review(**{
+            "controls-TOTAL_FORMS": "2",
+            "controls-1-control_id": other.pk,
+            "controls-1-include": "",
+            "controls-1-outcome": "",
+            "controls-1-findings": "",
+            "controls-1-evidence": "",
+            "controls-1-likelihood": "",
+            "controls-1-impact": "",
+            "controls-1-category": "",
+        })
+        other_page = self.client.get(reverse("controls:control_detail", args=[other.pk]))
+        self.assertNotContains(other_page, "Email review")
+        included_page = self.client.get(reverse("controls:control_detail", args=[self.control.pk]))
+        self.assertContains(included_page, "Email review")
