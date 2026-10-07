@@ -78,6 +78,35 @@ framework requirements it is mapped to.
 </section>
 
 <section>
+    <h2>In scope for</h2>
+    {% if process_links %}
+    <table class="register">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Name</th>
+                <th>Type</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for link in process_links %}
+            <tr>
+                <td class="nowrap"><a href="{% url 'processes:process_detail' link.process.pk %}">{{ link.process.process_id }}</a></td>
+                <td>
+                    <a href="{% url 'processes:process_detail' link.process.pk %}">{{ link.process.name }}</a>
+                    {% if link.process.archived_at %}<span class="flag">Archived</span>{% endif %}
+                </td>
+                <td>{{ link.process.get_kind_display }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="hint">This control is not in scope for a process or solution yet. Add it on that record's Edit page.</p>
+    {% endif %}
+</section>
+
+<section>
     <h2>Assessments</h2>
     {% if assessments %}
     <table class="register">

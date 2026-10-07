@@ -6,11 +6,14 @@ Run with: python manage.py test
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
+from django.db import IntegrityError, transaction
+from django.db.models import ProtectedError
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from processes.models import Process
+from controls.models import Control
+from processes.models import Process, ProcessControl
 
 
 def make_process(**overrides):
@@ -52,6 +55,11 @@ def form_data(**overrides):
         "description": "Staff email and calendars.",
         "owner": "IT manager",
         "notes": "",
+        # No controls in scope. The link rows still have to be present.
+        "control_links-TOTAL_FORMS": "0",
+        "control_links-INITIAL_FORMS": "0",
+        "control_links-MIN_NUM_FORMS": "0",
+        "control_links-MAX_NUM_FORMS": "1000",
     }
     data.update(overrides)
     return data
@@ -155,3 +163,100 @@ class ProcessPageTests(TestCase):
         edit_url = reverse("processes:process_edit", args=[process.pk])
         self.assertEqual(self.client.get(edit_url).status_code, 403)
         self.assertEqual(self.client.get(reverse("processes:process_restore", args=[process.pk])).status_code, 405)
+
+
+def make_control(**overrides):
+    """Build and save one control. Input: any fields to change. Output: the control."""
+    fields = {
+        "title": "Multi-factor authentication",
+        "description": "A second factor is required to sign in.",
+        "owner": "IT security officer",
+        "control_type": Control.ControlType.PREVENTIVE,
+        "status": Control.Status.IN_PLACE,
+    }
+    fields.update(overrides)
+    control = Control(**fields)
+    control.save()
+    return control
+
+
+class ProcessControlTests(TestCase):
+    """Controls chosen as in scope for a process or solution."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_superuser(
+            username="w", password="test-password-123"
+        )
+        self.client.force_login(self.user)
+        self.control = make_control()
+
+    def test_linking_shows_on_the_process_and_the_control(self):
+        response = self.client.post(
+            reverse("processes:process_create"),
+            form_data(**{
+                "control_links-TOTAL_FORMS": "1",
+                "control_links-0-id": "",
+                "control_links-0-control": self.control.pk,
+            }),
+            follow=True,
+        )
+        process = Process.objects.get()
+        self.assertRedirects(response, reverse("processes:process_detail", args=[process.pk]))
+        self.assertContains(response, self.control.control_id)
+        self.assertContains(response, "Multi-factor authentication")
+        control_page = self.client.get(reverse("controls:control_detail", args=[self.control.pk]))
+        self.assertContains(control_page, process.process_id)
+        self.assertContains(control_page, "Email")
+
+    def test_a_blank_spare_row_adds_nothing(self):
+        self.client.post(
+            reverse("processes:process_create"),
+            form_data(**{
+                "control_links-TOTAL_FORMS": "1",
+                "control_links-0-id": "",
+                "control_links-0-control": "",
+            }),
+        )
+        self.assertFalse(ProcessControl.objects.exists())
+
+    def test_the_same_control_cannot_be_in_scope_twice(self):
+        process = make_process(name="Email", kind=Process.Kind.SOLUTION)
+        process.save()
+        ProcessControl.objects.create(process=process, control=self.control)
+        duplicate = ProcessControl(process=process, control=self.control)
+        with self.assertRaises(ValidationError):
+            duplicate.full_clean()
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            duplicate.save()
+
+    def test_removing_a_control_drops_it_from_scope(self):
+        process = make_process(name="Email", kind=Process.Kind.SOLUTION)
+        process.save()
+        link = ProcessControl.objects.create(process=process, control=self.control)
+        self.client.post(
+            reverse("processes:process_edit", args=[process.pk]),
+            form_data(**{
+                "control_links-TOTAL_FORMS": "1",
+                "control_links-INITIAL_FORMS": "1",
+                "control_links-0-id": link.pk,
+                "control_links-0-control": self.control.pk,
+                "control_links-0-DELETE": "on",
+            }),
+        )
+        self.assertFalse(process.control_links.exists())
+
+    def test_an_archived_control_cannot_be_newly_added(self):
+        self.control.archived_at = timezone.now()
+        self.control.save()
+        response = self.client.get(reverse("processes:process_create"))
+        choices = response.context["link_formset"].forms[0].fields["control"].queryset
+        self.assertNotIn(self.control, choices)
+
+    def test_a_linked_process_or_control_cannot_be_deleted(self):
+        process = make_process()
+        process.save()
+        ProcessControl.objects.create(process=process, control=self.control)
+        with self.assertRaises(ProtectedError):
+            process.delete()
+        with self.assertRaises(ProtectedError):
+            self.control.delete()

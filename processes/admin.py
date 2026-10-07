@@ -7,13 +7,22 @@ The ID is shown but cannot be edited. These records cannot be deleted
 
 from django.contrib import admin
 
-from processes.models import Process
+from processes.models import Process, ProcessControl
+
+
+class ProcessControlInline(admin.TabularInline):
+    """Controls in scope for this process or solution."""
+
+    model = ProcessControl
+    extra = 0
+    autocomplete_fields = ["control"]
 
 
 @admin.register(Process)
 class ProcessAdmin(admin.ModelAdmin):
     """Admin pages for processes and solutions."""
 
+    inlines = [ProcessControlInline]
     list_display = ["process_id", "name", "kind", "owner", "is_archived"]
     list_filter = ["kind"]
     search_fields = ["process_id", "name", "description", "owner"]

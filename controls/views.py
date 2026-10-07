@@ -46,7 +46,8 @@ def control_list(request):
 
 def control_detail(request, pk):
     """
-    Show one control, the risks it addresses, and the framework requirements it maps to.
+    Show one control, the risks it addresses, the processes it is in scope
+    for, and the framework requirements it maps to.
 
     Inputs: the web request and the control's record number.
     Output: the detail page, or a "not found" page if no such control exists.
@@ -54,11 +55,13 @@ def control_detail(request, pk):
     """
     control = get_object_or_404(Control, pk=pk)
     risk_links = control.risk_links.select_related("risk", "risk__category")
+    process_links = control.process_links.select_related("process")
     requirement_links = control.requirement_links.select_related("requirement")
     assessments = control.assessments.filter(archived_at__isnull=True).order_by("-review_date", "-id")
     return render(request, "controls/control_detail.html", {
         "control": control,
         "risk_links": risk_links,
+        "process_links": process_links,
         "requirement_links": requirement_links,
         "assessments": assessments,
     })

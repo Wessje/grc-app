@@ -3,8 +3,8 @@ Processes and solutions: the things a risk belongs to.
 
 One list covers both. A business process (for example payroll) and a
 solution you run (for example email) are the same kind of record, told
-apart by the type. Every risk points at one of these. A control test
-will later be done in the context of one of them.
+apart by the type. Every risk points at one of these. The controls in
+scope for one of them are the ones that will be assessed in that context.
 
 This file is the central definition, so the admin screen and our own forms
 enforce the same rules.
@@ -56,3 +56,34 @@ class Process(models.Model):
             if not self.process_id:
                 self.process_id = f"PROC-{self.pk:04d}"
                 super().save(update_fields=["process_id"])
+
+
+class ProcessControl(models.Model):
+    """
+    One control in scope for one process or solution.
+
+    In scope means the control will be assessed in this context. The same
+    control can be in scope for several processes: MFA can be in scope for
+    email and for the customer portal, and those tests are separate. How
+    well the control works against a particular risk is a different link,
+    on the risk. A process or a control that still has a link cannot be
+    deleted.
+    """
+
+    process = models.ForeignKey(
+        Process, on_delete=models.PROTECT, related_name="control_links"
+    )
+    control = models.ForeignKey(
+        "controls.Control", on_delete=models.PROTECT, related_name="process_links"
+    )
+
+    class Meta:
+        ordering = ["control__control_id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["process", "control"], name="one_link_per_process_and_control"
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.control} in scope for {self.process}"

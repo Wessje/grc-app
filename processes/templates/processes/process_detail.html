@@ -45,6 +45,37 @@ Detail page for one process or solution.
 </section>
 
 <section>
+    <h2>Controls in scope</h2>
+    {% if control_links %}
+    <table class="register">
+        <thead>
+            <tr>
+                <th>Control ID</th>
+                <th>Title</th>
+                <th>Type</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for link in control_links %}
+            <tr>
+                <td class="nowrap"><a href="{% url 'controls:control_detail' link.control.pk %}">{{ link.control.control_id }}</a></td>
+                <td>
+                    <a href="{% url 'controls:control_detail' link.control.pk %}">{{ link.control.title }}</a>
+                    {% if link.control.archived_at %}<span class="flag">Archived</span>{% endif %}
+                </td>
+                <td>{{ link.control.get_control_type_display }}</td>
+                <td class="nowrap">{{ link.control.get_status_display }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="hint">No controls are in scope yet. Add them on Edit.</p>
+    {% endif %}
+</section>
+
+<section>
     <h2>Risks</h2>
     {% if risks %}
     <table class="register">
@@ -75,5 +106,5 @@ Detail page for one process or solution.
     {% endif %}
 </section>
 
-<p class="hint">Choosing the controls to assess for this {{ process.get_kind_display|lower }} comes next.</p>
+<p class="hint">Assessing these controls for this {{ process.get_kind_display|lower }}, and reassessing the risks above, comes next.</p>
 {% endblock %}

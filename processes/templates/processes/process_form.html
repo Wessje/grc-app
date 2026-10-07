@@ -14,7 +14,7 @@ Form page for creating a process or solution (process is empty) or editing one.
     <h1>New process or solution</h1>
 {% endif %}
 
-{% if form.errors %}
+{% if form.errors or link_formset.total_error_count %}
     <p class="notice flag-notice">Please correct the errors below.</p>
 {% endif %}
 {{ form.non_field_errors }}
@@ -36,6 +36,25 @@ Form page for creating a process or solution (process is empty) or editing one.
             {% endfor %}
         </fieldset>
     {% endfor %}
+    <fieldset>
+        <legend>Controls in scope</legend>
+        <p class="hint">Choose the controls to assess for this {{ process.get_kind_display|default:"record"|lower }}. The same control can be in scope for another process or solution. Leave the spare row empty if you have nothing to add.</p>
+        {{ link_formset.management_form }}
+        {% for error in link_formset.non_form_errors %}<p class="error">{{ error }}</p>{% endfor %}
+        {% for link_form in link_formset %}
+            {{ link_form.id }}
+            <div class="link-row{% if link_form.errors %} has-error{% endif %}">
+                <div>
+                    <label for="{{ link_form.control.id_for_label }}">Control</label>
+                    {{ link_form.control }}
+                    {% for error in link_form.control.errors %}<p class="error">{{ error }}</p>{% endfor %}
+                </div>
+                {% if link_form.instance.pk %}
+                    <label class="remove-link">{{ link_form.DELETE }} Remove</label>
+                {% endif %}
+            </div>
+        {% endfor %}
+    </fieldset>
     <p class="hint"><span class="required">*</span> required. The ID is assigned automatically.</p>
     <button type="submit" class="button">{% if process %}Save changes{% else %}Create{% endif %}</button>
 </form>

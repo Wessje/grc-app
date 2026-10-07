@@ -15,7 +15,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
-from processes.forms import ProcessForm
+from processes.forms import ProcessControlLinkFormSet, ProcessForm
 from processes.models import Process
 
 
@@ -39,9 +39,11 @@ def process_detail(request, pk):
     """
     process = get_object_or_404(Process, pk=pk)
     risks = process.risks.select_related("category").order_by("id")
+    control_links = process.control_links.select_related("control")
     return render(request, "processes/process_detail.html", {
         "process": process,
         "risks": risks,
+        "control_links": control_links,
     })
 
 
@@ -54,15 +56,22 @@ def process_create(request):
     on success – a redirect to the new record's page. The ID is assigned
     automatically on save.
     """
+    process = Process()
     if request.method == "POST":
         form = ProcessForm(request.POST)
-        if form.is_valid():
+        link_formset = ProcessControlLinkFormSet(request.POST, instance=process)
+        if form.is_valid() and link_formset.is_valid():
             process = form.save()
+            link_formset.instance = process
+            link_formset.save()
             messages.success(request, f"{process.process_id} created.")
             return redirect("processes:process_detail", pk=process.pk)
     else:
         form = ProcessForm()
-    return render(request, "processes/process_form.html", {"form": form, "process": None})
+        link_formset = ProcessControlLinkFormSet(instance=process)
+    return render(request, "processes/process_form.html", {
+        "form": form, "process": None, "link_formset": link_formset,
+    })
 
 
 @permission_required("processes.change_process", raise_exception=True)
@@ -81,13 +90,18 @@ def process_edit(request, pk):
         )
     if request.method == "POST":
         form = ProcessForm(request.POST, instance=process)
-        if form.is_valid():
+        link_formset = ProcessControlLinkFormSet(request.POST, instance=process)
+        if form.is_valid() and link_formset.is_valid():
             form.save()
+            link_formset.save()
             messages.success(request, f"{process.process_id} updated.")
             return redirect("processes:process_detail", pk=process.pk)
     else:
         form = ProcessForm(instance=process)
-    return render(request, "processes/process_form.html", {"form": form, "process": process})
+        link_formset = ProcessControlLinkFormSet(instance=process)
+    return render(request, "processes/process_form.html", {
+        "form": form, "process": process, "link_formset": link_formset,
+    })
 
 
 def archive_process(process):
