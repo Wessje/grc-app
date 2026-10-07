@@ -7,3 +7,7 @@ node_modules/
 *.db
 backups/
 .DS_Store
+
+# Local notes. Kept on this computer, not published.
+AGENTS.md
+docs/plan.md
